@@ -8,8 +8,8 @@ class Base(DeclarativeBase):
 
 db = SQLAlchemy(model_class=Base)
 
-class Users(Base):
-    __tablename__ = 'users'
+class Auth_users(Base):
+    __tablename__ = 'auth_users'
 
     id: Mapped[int] = mapped_column(primary_key = True)
     email: Mapped[str] = mapped_column(String(360), nullable=False, unique=True)
@@ -24,9 +24,9 @@ class Users(Base):
 class Contractors(Base):
     __tablename__ = 'contractors'
 
-    id: Mapped[int] = mapped_column(ForeignKey('users.id'), primary_key = True, nullable=False)
+    id: Mapped[int] = mapped_column(ForeignKey('auth_users.id'), primary_key = True, nullable=False)
     vendor_id: Mapped[int] = mapped_column(ForeignKey('vendors.id'), nullable=False)
-    vendor_manager_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
+    vendor_manager_id: Mapped[int] = mapped_column(ForeignKey('auth_users.id'), nullable=False)
     first_name: Mapped[str] = mapped_column(String(360), nullable=False)
     last_name: Mapped[str] = mapped_column(String(360), nullable=False)
     contact_number: Mapped[str] = mapped_column(String(20), nullable=False)
