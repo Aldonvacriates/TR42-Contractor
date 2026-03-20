@@ -16,17 +16,22 @@ class Users(Base):
     username: Mapped[str] = mapped_column(String(360), nullable=False, unique=True)
     password: Mapped[str] = mapped_column(String(500), nullable=False)
     role: Mapped[str] = mapped_column(String(360), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    offline_pin: Mapped[str] = mapped_column(String(10), nullable=True)
+
+
 
 class Contractors(Base):
     __tablename__ = 'contractors'
 
-    id: Mapped[int] = mapped_column(primary_key = True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
+    id: Mapped[int] = mapped_column(ForeignKey('users.id'), primary_key = True, nullable=False)
     vendor_id: Mapped[int] = mapped_column(ForeignKey('vendors.id'), nullable=False)
-    license_number: Mapped[str] = mapped_column(String(360), nullable=False)
-    company_name: Mapped[str] = mapped_column(String(360), nullable=False)
+    vendor_manager_id: Mapped[int] = mapped_column(ForeignKey('users.id'), nullable=False)
+    first_name: Mapped[str] = mapped_column(String(360), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(360), nullable=False)
     contact_number: Mapped[str] = mapped_column(String(20), nullable=False)
-    biometric_data: Mapped[str] = mapped_column(String(500))
+    date_of_birth: Mapped[date] = mapped_column(Date, nullable=False)
+    address: Mapped[str] = mapped_column(String(500), nullable=False)
 
 class Work_orders(Base):
     __tablename__ = 'work_orders'
