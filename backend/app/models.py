@@ -15,8 +15,13 @@ class Auth_users(Base):
     email: Mapped[str] = mapped_column(String(360), nullable=False, unique=True)
     username: Mapped[str] = mapped_column(String(360), nullable=False, unique=True)
     password: Mapped[str] = mapped_column(String(500), nullable=False)
+    role: Mapped[str] = mapped_column(String(360), nullable=False)  # vendor, client, contractor
+    # biometric_data: Mapped[str] = mapped_column(String(500), nullable=True)
     # created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
+    contractor = relationship("Contractors", uselist=False, back_populates="auth_user", foreign_keys="Contractors.id")
+    vendor = relationship("Vendors", uselist=False, back_populates="auth_user", foreign_keys="Vendors.id")
+    client = relationship("Clients", uselist=False, back_populates="auth_user", foreign_keys="Clients.id")
 
 class Contractors(Base):
     __tablename__ = 'contractors'
@@ -26,15 +31,20 @@ class Contractors(Base):
     manager_id: Mapped[int] = mapped_column(ForeignKey('auth_users.id'), nullable=False)
     first_name: Mapped[str] = mapped_column(String(360), nullable=False)
     last_name: Mapped[str] = mapped_column(String(360), nullable=False)
+    
+    license_number: Mapped[str] = mapped_column(String(20), nullable=False)
+    expiration_date: Mapped[date] = mapped_column(Date, nullable=False)
+    contractor_type: Mapped[str] = mapped_column(String(360), nullable=False)  #clarify if contractor_type is necessary for contractors
+    status: Mapped[str] = mapped_column(String(20), nullable=False)  #clarify if active status is needed (ex. offboarded)
+    tax_classification: Mapped[str] = mapped_column(String(360), nullable=False)
+    # approved_status: Mapped[str] = mapped_column(String(100), nullable=False) clarify if approval status is needed for contractors (ex. pending, approved, rejected)
     contact_number: Mapped[str] = mapped_column(String(20), nullable=False)
     date_of_birth: Mapped[date] = mapped_column(Date, nullable=False)
     address: Mapped[str] = mapped_column(String(500), nullable=False)
     offline_pin: Mapped[str] = mapped_column(String(10), nullable=True)
-    #back up measure to reset pin.  (security questions or phone pin/phone biometrics) 
-    # send email to manager notifying new pin reset
 
-    # role: Mapped[str] = mapped_column(String(360), nullable=False) manager, worker, admin
-
+    auth_user = relationship("Auth_users", back_populates="contractor", foreign_keys=[id])
+    
 
 class Work_orders(Base):
     __tablename__ = 'work_orders'
@@ -49,14 +59,14 @@ class Work_orders(Base):
     estimated_cost: Mapped[float] = mapped_column(Float, nullable=False)
     estimated_duration: Mapped[float] = mapped_column(Float, nullable=False)
     priority: Mapped[str] = mapped_column(String(360), nullable=False)
-    # assigned_contractor: Mapped[int] = mapped_column(ForeignKey('contractors.id'), nullable=True) list of contractor that accepted.
+
 
 
 class Tasks(Base):
     __tablename__ = 'tasks'
 
     id: Mapped[int] = mapped_column(primary_key = True)
-    work_order_id: Mapped[int] = mapped_column(ForeignKey('work_orders.id'), nullable=False)
+    work_order_id: Mapped[int] = mapped_column(ForeignKey('work_orders.id'), index=True, nullable=False)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     priority: Mapped[str] = mapped_column(String(360), nullable=False)
     task_status: Mapped[str] = mapped_column(String(360), nullable=False)
@@ -76,3 +86,24 @@ class Tasks(Base):
     contractor_notes: Mapped[str] = mapped_column(String(500))
     anomaly_flag: Mapped[bool] = mapped_column(Boolean, default=False)
     anomaly_reason: Mapped[str] = mapped_column(String(500))
+
+
+#vendors and clients to be updated
+
+class Vendors(Base):
+    __tablename__ = 'vendors'
+
+    id: Mapped[int] = mapped_column(ForeignKey('auth_users.id'), primary_key = True, nullable=False)
+    first_name: Mapped[str] = mapped_column(String(360), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(360), nullable=False)
+
+    auth_user = relationship("Auth_users", back_populates="vendor", foreign_keys=[id])
+
+class Clients(Base):
+    __tablename__ = 'clients'
+
+    id: Mapped[int] = mapped_column(ForeignKey('auth_users.id'), primary_key = True, nullable=False)
+    first_name: Mapped[str] = mapped_column(String(360), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(360), nullable=False)
+
+    auth_user = relationship("Auth_users", back_populates="client", foreign_keys=[id])
