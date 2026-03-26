@@ -2,12 +2,20 @@
 
 ## Project Information
 
-Please complete the following before submitting your repository.
-
-**Project Name:**  
+**Project Name:**  Contractor Mobile 
 **Team Name:**  
-**Cohort / Sprint:**  
 **Team Members:**  
+- Nicole Cespedes- Backend
+- Edward Cochran- Backend
+- Jonathan Hubbard - Full Stack (Frontend focus)
+- Troy Wenzel - Frontend
+- Johnna Auman - Cybersecurity
+- Justin Wold - Backend
+- Charlie Estrada - Frontend
+- James Bustamante - Backend
+- Aldo Pena Herrera - Fullstack
+
+
 **Tech Stack:** 
 
 ## Project Overview
