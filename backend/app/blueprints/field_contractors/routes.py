@@ -1,12 +1,68 @@
 from flask import request, jsonify
 from app.models import Auth_users, Contractors, db
 from .schemas import contractor_schema, contractor_update_schema
-from ..auth_users.schemas import auth_user_update_schema
+from ..auth_users.schemas import auth_user_update_schema, auth_user_create_schema
 from marshmallow import ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from . import field_contractors_bp
-from app.util.auth import encode_token, token_required
+from app.util.auth import encode_token, token_required, vendor_required
 
+
+@field_contractors_bp.route('/register', methods=['POST'])
+@vendor_required
+def register_contractor():
+    json_data = request.get_json()
+
+    if not json_data:
+        return jsonify({'error': 'No input data provided'}), 400
+
+    # Validate and deserialize input
+    try:
+        auth_user_data = auth_user_create_schema.load(json_data.get('auth_user', {}))
+        contractor_data = contractor_schema.load(json_data.get('contractor', {}))
+    except ValidationError as e:
+        return jsonify(e.messages), 400
+
+    # Check if user already exists
+    existing_user = db.session.query(Auth_users).filter(Auth_users.username == auth_user_data['username']).first()
+    if existing_user:
+        return jsonify({'error': 'User with this username already exists'}), 400
+
+    # Create new user
+    new_auth_user = Auth_users(
+        email=auth_user_data['email'],
+        username=auth_user_data['username'],
+        password=generate_password_hash(auth_user_data['password']),
+        role='contractor',
+        created_by=request.user_id
+    )
+    db.session.add(new_auth_user)
+    db.session.flush()  # Get the ID of the newly created user
+
+    # Create new contractor
+    new_contractor = Contractors(
+        id=new_auth_user.id,
+        vendor_id=contractor_data['vendor_id'],
+        manager_id=contractor_data['manager_id'],
+        first_name=contractor_data['first_name'],
+        last_name=contractor_data['last_name'],
+        license_number=contractor_data['license_number'],
+        expiration_date=contractor_data['expiration_date'],
+        contractor_type=contractor_data['contractor_type'],
+        status=contractor_data['status'],
+        tax_classification=contractor_data['tax_classification'],
+        contact_number=contractor_data['contact_number'],
+        date_of_birth=contractor_data['date_of_birth'],
+        address=contractor_data['address'],
+    )
+    db.session.add(new_contractor)
+    db.session.commit()
+
+    return jsonify({
+        'message': 'Contractor registered successfully',
+        'auth_user': auth_user_update_schema.dump(new_auth_user),
+        'contractor': contractor_schema.dump(new_contractor)
+    }), 201
 
 # View User Profile
 @field_contractors_bp.route('/profile', methods=['GET'])

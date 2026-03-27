@@ -1,7 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy import Date, String, Integer, Float, ForeignKey, Table, Column, Boolean, DateTime
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 class Base(DeclarativeBase):
     pass
@@ -17,7 +17,12 @@ class Auth_users(Base):
     password: Mapped[str] = mapped_column(String(500), nullable=False)
     role: Mapped[str] = mapped_column(String(360), nullable=False)  # vendor, client, contractor
     # biometric_data: Mapped[str] = mapped_column(String(500), nullable=True)
-    # created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    profile_photo: Mapped[str] = mapped_column(String(500), nullable=True) #update to linked photo table later
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc),   nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_by: Mapped[int] = mapped_column(ForeignKey('auth_users.id'), nullable=False)
+    updated_by: Mapped[int] = mapped_column(ForeignKey('auth_users.id'), nullable=True)
 
     contractor = relationship("Contractors", uselist=False, back_populates="auth_user", foreign_keys="Contractors.id")
     vendor = relationship("Vendors", uselist=False, back_populates="auth_user", foreign_keys="Vendors.id")

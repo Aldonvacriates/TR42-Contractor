@@ -32,6 +32,7 @@ def token_required(f):
         try:
             data = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
             request.user_id = int(data['sub'])
+            request.user_role = data['role']
 
         except jose.exceptions.ExpiredSignatureError:
             return jsonify({'message': 'token is expired'}), 403
@@ -41,3 +42,12 @@ def token_required(f):
         return f(*args, **kwargs)
 
     return decoration
+
+def vendor_required(f):
+    @wraps(f)
+    @token_required
+    def wrapper(*args, **kwargs):
+        if request.user_role != "vendor":
+            return jsonify({'error': 'Vendor privileges required'}), 403
+        return f(*args, **kwargs)
+    return wrapper
