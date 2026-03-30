@@ -19,3 +19,9 @@ class AuthUserUpdateSchema(Schema):
 auth_user_schema = AuthUserSchema()
 login_schema = LoginSchema()
 auth_user_update_schema = AuthUserUpdateSchema()
+
+# Offline PIN schema 
+class OfflinePinSchema(Schema):
+    pin = fields.Str(required=True)
+
+offline_pin_schema = OfflinePinSchema()
