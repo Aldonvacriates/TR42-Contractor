@@ -10,13 +10,14 @@
 - Jonathan Hubbard - Full Stack (Frontend focus)
 - Troy Wenzel - Frontend
 - Johnna Auman - Cybersecurity
-- Justin Wold - Backend
 - Charlie Estrada - Frontend
 - James Bustamante - Backend
-- Aldo Pena Herrera - Fullstack
+- Aldo Pena Herrera - Fullstack (Backend focus)
 
 
 **Tech Stack:** 
+Python Flask, SQL ALCHAMEY 
+REACT NATIVE EXPO
 
 ## Project Overview
 
@@ -31,7 +32,8 @@ Provide a short description of your project:
 Include any necessary documentation below:
 
 - Setup instructions  
-- Required environment variables  
+- Required environment variables
+- 
 - API documentation (if applicable)  
 - Test credentials (if applicable)  
 - Deployment link (if available)  

@@ -1,10 +1,11 @@
 from flask import request, jsonify
-from app.models import Auth_users, db
-from .schemas import auth_user_schema, login_schema
+from app.models import Auth_users, Contractors, db
+from .schemas import auth_user_schema, login_schema, offline_pin_schema
 from marshmallow import ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from . import auth_users_bp
-from app.util.auth import encode_token
+from app.util.auth import encode_token, token_required
+
 
 #Login and get token
 @auth_users_bp.route('/login', methods=['POST'])
@@ -49,4 +50,26 @@ def create_user():
 
     return auth_user_schema.jsonify(new_user), 201
 
+
+# Set offline PIN for contractor (stored for offline login use on-device)
+@auth_users_bp.route('/offline-pin', methods=['POST'])
+@token_required
+def set_offline_pin():
+    try:
+        data = offline_pin_schema.load(request.json)
+    except ValidationError as e:
+        return jsonify(e.messages), 400
+
+    pin = data.get('pin', '')
+    if not pin.isdigit() or len(pin) < 6 or len(pin) > 10:
+        return jsonify({'error': 'pin must be 6-10 digits'}), 400
+
+    contractor = db.session.query(Contractors).where(Contractors.id == request.user_id).first()
+    if not contractor:
+        return jsonify({'error': 'contractor not found for current user'}), 404
+
+    contractor.offline_pin = generate_password_hash(pin)
+    db.session.commit()
+
+    return jsonify({'message': 'offline pin set'}), 200
 

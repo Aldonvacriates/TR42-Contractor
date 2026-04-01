@@ -61,7 +61,7 @@ class Work_orders(Base):
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     current_status: Mapped[str] = mapped_column(String(360), nullable=False)
     location: Mapped[str] = mapped_column(String(500), nullable=False)
-    estimated_cost: Mapped[float] = mapped_column(Float, nullable=False)
+    # estimated_cost: Mapped[float] = mapped_column(Float, nullable=False)
     estimated_duration: Mapped[float] = mapped_column(Float, nullable=False)
     priority: Mapped[str] = mapped_column(String(360), nullable=False)
 
