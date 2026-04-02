@@ -10,4 +10,9 @@ class TicketSchema(ma.SQLAlchemyAutoSchema):
         include_fk = True
     id = auto_field(dump_only=True)
 
+class TicketUpdateSchema(Schema):
+    contractor_notes = fields.Str(required=False)
+    
+
 tickets_schema = TicketSchema(many=True)
+ticket_update_schema = TicketUpdateSchema()
