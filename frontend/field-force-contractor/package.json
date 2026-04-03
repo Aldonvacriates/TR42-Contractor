@@ -1,6 +1,6 @@
 {
   "name": "field-force-contractor",
-  "main": "index.js",
+  "main": "index.tsx",
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
