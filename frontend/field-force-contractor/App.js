@@ -25,7 +25,8 @@ export default function App() {
   },[])
 
   return (
- 
+    
+   (externalFontsLoaded) && 
   <NavigationContainer>
 
     <StackNavigator.Navigator screenOptions={screenConfig.window} initialRouteName="Home">
