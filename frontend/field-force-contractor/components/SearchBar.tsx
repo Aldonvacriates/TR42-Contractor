@@ -13,7 +13,7 @@ export const SearchBar:FC<props> = (props) => {
  const [buttonText, setButtonText] = useState(props.buttonText);
     return(<>
     <View style={Styles.SearchBar.Bar}>
-        <TextInput style={Styles.SearchBar.SearchInput} placeholder={searchPlaceHolder}/>
+        <TextInput style={Styles.SearchBar.SearchInput} placeholder={searchPlaceHolder ?? "Search..."}/>
         <Pressable style={Styles.SearchBar.SearchButton}>
           <Text style={Styles.SearchBar.SearchButtonText}> {buttonText}</Text>
         </Pressable>

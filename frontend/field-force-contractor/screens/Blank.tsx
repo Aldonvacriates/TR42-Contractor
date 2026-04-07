@@ -7,7 +7,7 @@ export const Blank:FC = () =>{
 
     return(<>
     
-       <MainFrame>
+       <MainFrame header="default">
            <View style={Styles.TestStyles.Style1}>
                 
                 <Text style={Styles.TestStyles.Style2}>children in styled container here</Text>

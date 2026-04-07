@@ -10,8 +10,13 @@ export const Assets = {
     },
     icons:{
 
-      TextToSpeech: require("../assets/images/SpeechToTextIconBlack.png")
+      TextToSpeech: require("../assets/images/SpeechToTextIconBlack.png"),
               
+        profileIcon: require("../assets/images/profile-icon.png")
+    },
+    logos: {
+        ffLogoName: require("../assets/images/ff-logo-name.png")
+        
     }
 
 }
