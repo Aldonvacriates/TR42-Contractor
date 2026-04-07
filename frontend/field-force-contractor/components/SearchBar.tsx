@@ -15,30 +15,21 @@ export const SearchBar:FC<props> = (props) => {
     return(<>
     <View style={Styles.SearchBar.Bar}>
         <TextInput style={Styles.SearchBar.SearchInput} placeholder={searchPlaceHolder}/>
-        <Pressable style={({pressed}) => [
-
-              Styles.SearchBar.SearchButton,
+        <Pressable style={({pressed}) => 
+        [Styles.SearchBar.SearchButton,
+          {backgroundColor: (pressed) ? Styles.SearchBar.SearchButtonPressed.backgroundColor : Styles.SearchBar.SearchButton.backgroundColor}
+         ]}>
+           {({pressed}) => 
               {
-                backgroundColor: (pressed) ? Styles.SearchBar.SearchButtonPressed.backgroundColor : Styles.SearchBar.SearchButton.backgroundColor,
-              
+                return(<Text style={
+                  [Styles.SearchBar.SearchButtonText,
+                    {
+                      color: (pressed) ? Styles.SearchBar.SearchButtonPressed.color : Styles.SearchBar.SearchButtonText.color
+                    }
+                  ]
+                }>{buttonText}</Text>)                      
               }
-              
-              ]}>
-            
-                  {
-                    ({pressed}) => {
-                   
-                      return(<Text style={[
-                        Styles.SearchBar.SearchButtonText,
-                        {
-                          color: (pressed) ? Styles.SearchBar.SearchButtonPressed.color : Styles.SearchBar.SearchButtonText.color
-                        }
-
-                      ]}>{buttonText}</Text>)
-                      
-                      }
-                    
-                  }
+          }
 
             </Pressable>
           <Pressable style={({pressed}) =>[
