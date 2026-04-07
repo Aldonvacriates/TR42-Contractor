@@ -66,7 +66,8 @@ export const Styles = {
               alignItems:"center"
         },
         SearchInput:{
-          width: "100%",
+
+          flex:1,
           height: 37,
           backgroundColor:"white",
           marginLeft:15,

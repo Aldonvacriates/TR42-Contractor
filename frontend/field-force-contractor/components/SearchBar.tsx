@@ -5,12 +5,12 @@ import { Assets } from "../constants/Assets";
 import {useState} from "react";
 type props = {
 
-    placeHolder:string,
-    buttonText: string
+    placeHolder?:string,
+    buttonText?: string
 }
 export const SearchBar:FC<props> = (props) => {
- const [searchPlaceHolder, setSearchPlaceHolder] = useState(props.placeHolder ?? "Search...");
- const [buttonText, setButtonText] = useState(props.buttonText);
+ const [searchPlaceHolder, setSearchPlaceHolder] = useState(props.placeHolder || "Search...");
+ const [buttonText, setButtonText] = useState(props.buttonText || "Submit");
     return(<>
     <View style={Styles.SearchBar.Bar}>
         <TextInput style={Styles.SearchBar.SearchInput} placeholder={searchPlaceHolder}/>
