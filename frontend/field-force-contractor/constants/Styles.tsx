@@ -7,15 +7,13 @@ export const Styles = {
     
             Window:{
                 display: "flex",
-                width: "100%",
-                height: "100%"
+                flex:1
             
         },
         Body:{
 
              alignItems:"center",
-             width: "100%",
-             height: "100%",
+             flex: 1,
              overflow: "hidden",
             
              
@@ -23,6 +21,7 @@ export const Styles = {
         Header:{
             
              width: "100%",
+             minHeight:27,
              alignItems:"center",
           
 

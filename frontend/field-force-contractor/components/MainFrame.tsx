@@ -17,7 +17,8 @@ export const MainFrame:FC<Props> = (props) =>{
 
       <View style={Styles.MainFrame.Window}>
         <View style={Styles.MainFrame.Header}>
-          <Header header={props.header ?? "default"}/> 
+          <View style={Styles.MainFrame.SpaceHeader}/>
+          <Header header={props.header}/> 
           <Text style={Styles.MainFrame.DefaultText}> Top menu goes here</Text> 
         </View>
 
