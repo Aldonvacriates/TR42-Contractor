@@ -1,6 +1,7 @@
+import { StyleSheet } from "react-native";
+
 const DefaultFont  = "poppins-bold";
 const DefaultColor = "white";
-import { StyleSheet } from "react-native";
 
 export const Styles = {
 
@@ -22,115 +23,99 @@ export const Styles = {
     profileIcon: { width: 36, height: 36 },
   }),
 
-  // ── Secondary tab bar (Home | Assigned | Completed | In Progress) ────────
-  // Sits between the main header and the screen content.
-  // Only shown when the MainFrame receives showTabs={true}.
-  //
-  // CHARLIE / JONATHAN:
-  //   activeTab and onTabPress are passed in from your screen so you
-  //   control which tab is highlighted and what happens when one is tapped.
-  //   Example:
-  //     <MainFrame header="home" showTabs activeTab="Assigned" onTabPress={setTab}>
   TabBar: StyleSheet.create({
     container: {
-      flexDirection:     "row",
-      width:             "100%",
-      backgroundColor:   "#0d1b2e",          // slightly lighter than the main bg
+      flexDirection: "row",
+      width: "100%",
+      backgroundColor: "#0d1b2e",
       borderBottomWidth: 1,
       borderBottomColor: "#1e2d45",
       paddingHorizontal: 4,
     },
     tab: {
-      flex:            1,
-      alignItems:      "center",
-      justifyContent:  "center",
+      flex: 1,
+      alignItems: "center",
+      justifyContent: "center",
       paddingVertical: 10,
       borderBottomWidth: 3,
-      borderBottomColor: "transparent",      // invisible underline when inactive
+      borderBottomColor: "transparent",
     },
-    tabActive: {
-      borderBottomColor: "#ff8c00",          // orange underline on active tab
-    },
+    tabActive: { borderBottomColor: "#ff8c00" },
     tabText: {
       fontFamily: DefaultFont,
-      fontSize:   12,
-      color:      "#6b7280",                 // muted gray when inactive
+      fontSize: 12,
+      color: "#6b7280",
       letterSpacing: 0.3,
     },
-    tabTextActive: {
-      color: "#ff8c00",                      // orange text when active
+    tabTextActive: { color: "#ff8c00" },
+  }),
+
+  SearchBar: StyleSheet.create({
+    Bar: {
+      flexDirection: "row",
+      backgroundColor: "#007CFF",
+      width: "100%",
+      height: 54,
+      justifyContent: "flex-start",
+      alignItems:"center",
     },
+    SearchInput: {
+      flex: 1,
+      height: 37,
+      backgroundColor:"white",
+      marginLeft: 15,
+      paddingLeft: 15,
+      borderRadius: 5,
+    },
+    SearchButton: {
+      width: 81,
+      height: 37,
+      backgroundColor: "black",
+      justifyContent: "center",
+      alignItems: "center",
+      marginLeft: 10,
+      borderRadius: 8,
+    },
+    SearchButtonPressed: {
+      backgroundColor: "#FAEECE",
+      color: "black",
+    },
+    SearchButtonText: {
+      fontFamily: DefaultFont,
+      fontSize: 15,
+      color: "white",
+    },
+    TextToSpeechButton: {
+      width: 40,
+      height: 37,
+      borderRadius: 8,
+      backgroundColor: "#17FE81",
+      marginLeft: 10,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 10,
+    },
+    TextToSpeechButtonPressed: { backgroundColor: "#FFE9AE" },
+    TextToSpeechInset: {
+      width: 35,
+      height: 32,
+      borderRadius: 8,
+      borderColor: "white",
+      borderWidth: 2,
+    },
+    TextToSpeechIcon: { width: "100%", height: "100%" },
+  }),
+
+  Menu: StyleSheet.create({
+    container: { width:"100%", minHeight:54, padding:5, backgroundColor:"#00254D", flexDirection:"row", justifyContent:"center", alignItems:"center", overflow:"hidden" },
+    itemText: { fontFamily: DefaultFont, color: DefaultColor, fontSize:14, padding:5 },
+    itemTextPressed: { color:"#FAEECE" },
+    menuItem: { justifyContent:"center", alignItems:"center" },
+    menuIcon: { width:35, height:35 },
   }),
 
   TestStyles: StyleSheet.create({
-    Style1: { width: "80%", height: "80%", marginTop: 20, backgroundColor: "red", justifyContent: "center" },
+    Style1: { width: "80%", height: "80%", marginTop:20, backgroundColor: "red", justifyContent:"center" },
     Style2: { fontFamily: DefaultFont, fontSize: 30, color: DefaultColor, textAlign: "center" },
   }),
-
-<<<<<<< HEAD
 };
-=======
-                width:"100%",
-                height:"100%",
-                
-        },
-          DefaultText:{
-
-            fontFamily: DefaultFont,
-            fontSize: 20,
-            color:DefaultColor
-
-        },
-        SpaceHeader:{
-
-            backgroundColor : "black",
-            width: "100%",
-            height: 45
-        }
-        
-    }),
-    TestStyles : StyleSheet.create({
-
-        Style1:{
-            width: "80%",
-            height: "80%",
-            marginTop:20,
-            backgroundColor: "red",
-            justifyContent:"center",
-        },
-        Style2:{
-            fontFamily: DefaultFont,
-            fontSize: 30,
-            color:DefaultColor, 
-            textAlign: "center",
-        }
-    }),
-
-    HeaderVariants: StyleSheet.create({
-
-        container: {
-            width: '100%',
-        },
-        row: {
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingVertical: 10,
-        },
-        logo: {
-            height: 48,
-            aspectRatio: 4,
-        },
-        profileIcon: {
-            height: 48,
-            width: 48,
-        },
-        centered: {
-            alignItems: 'center',
-            paddingVertical: 10,
-        },
-    }),
-    
-}
->>>>>>> becb9b8b116401500b04e827827b0635410e7d32
