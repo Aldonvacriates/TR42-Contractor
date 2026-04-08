@@ -161,6 +161,8 @@ export const Styles = {
 
         container: {
             width: '100%',
+            backgroundColor:"#000000",
+       
         },
         row: {
             flexDirection: 'row',
@@ -182,5 +184,17 @@ export const Styles = {
             paddingVertical: 10,
         },
     }),
+    Menu: StyleSheet.create({
+
+        container:{ width:"100%",height:"auto",minHeight:54,padding:5,backgroundColor:"#00254D",flexDirection:"row",justifyContent:"center",alignItems:"center", overflow:"hidden"},
+        itemText:{fontFamily:"poppins-bold", color:DefaultColor,fontSize:14,padding:5},
+        itemTextPressed:{color:"#FAEECE"},
+        menuItem:{justifyContent:"center",alignItems:"center"},
+        menuIcon:{width:35,height:35}
+
+
+
+
+    })
     
 }

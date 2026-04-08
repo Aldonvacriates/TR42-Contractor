@@ -10,9 +10,9 @@ export const Assets = {
     },
     icons:{
 
-      TextToSpeech: require("../assets/images/SpeechToTextIconBlack.png"),
-              
-        profileIcon: require("../assets/images/profile-icon.png")
+        TextToSpeech: require("../assets/images/SpeechToTextIconBlack.png"),     
+        profileIcon: require("../assets/images/profile-icon.png"),
+        testIcon: require("../assets/images/android-icon-foreground.png")
     },
     logos: {
         ffLogoName: require("../assets/images/ff-logo-name.png")
