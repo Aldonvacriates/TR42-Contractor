@@ -61,7 +61,7 @@ class Work_orders(Base):
     due_date: Mapped[date] = mapped_column(Date, nullable=False)
     current_status: Mapped[str] = mapped_column(String(360), nullable=False)
     location: Mapped[str] = mapped_column(String(500), nullable=False)
-    # estimated_cost: Mapped[float] = mapped_column(Float, nullable=False)
+    estimated_cost: Mapped[float] = mapped_column(Float, nullable=False)
     estimated_duration: Mapped[float] = mapped_column(Float, nullable=False)
     priority: Mapped[str] = mapped_column(String(360), nullable=False)
 
@@ -75,15 +75,15 @@ class Tickets(Base):
     vendor_id: Mapped[int] = mapped_column(ForeignKey('vendors.id'), index=True, nullable=False)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     priority: Mapped[str] = mapped_column(String(360), nullable=False)
-    status: Mapped[str] = mapped_column(String(360), nullable=False)
+    status: Mapped[str] = mapped_column(String(360), nullable=False) #ex. to_do, in_progress, completed
 
     assigned_contractor: Mapped[int] = mapped_column(ForeignKey('contractors.id'))
     contractor_assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     task_created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True))
-    start_location: Mapped[str] = mapped_column(String(500))
-    end_location: Mapped[str] = mapped_column(String(500))
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    start_location: Mapped[str] = mapped_column(String(500), nullable=True)
+    end_location: Mapped[str] = mapped_column(String(500), nullable=True)
 
     estimated_quantity: Mapped[float] = mapped_column(Float)
     unit: Mapped[str] = mapped_column(String(360))
@@ -91,7 +91,7 @@ class Tickets(Base):
     
     contractor_notes: Mapped[str] = mapped_column(String(500))
     anomaly_flag: Mapped[bool] = mapped_column(Boolean, default=False)
-    anomaly_reason: Mapped[str] = mapped_column(String(500))
+    anomaly_reason: Mapped[str] = mapped_column(String(500), nullable=True)
 
 
 #vendors and clients to be updated
