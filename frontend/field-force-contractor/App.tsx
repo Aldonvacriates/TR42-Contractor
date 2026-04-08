@@ -1,30 +1,47 @@
-import {useEffect, useState} from "react";
-import {LoadFonts} from "./utils/LoadFonts";
+import { useEffect, useState } from "react";
+import { LoadFonts } from "./utils/LoadFonts";
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {Blank} from "./screens/Blank";
 import HomeScreen from "./screens/HomeScreen"
 import {screenConfig} from "./constants/ScreenConfig";
+ 
+// ── TROY — Auth screens ──────────────────────────────────────
+import LoginScreen           from "./screens/LoginScreen";
+import OfflineLoginScreen    from "./screens/OfflineLoginScreen";
+import BiometricScreen       from "./screens/BiometricScreen";
+import PasswordResetScreen   from "./screens/PasswordResetScreen";
+import OfflinePinResetScreen from "./screens/OfflinePinResetScreen";
+ 
+// ── TROY — Profile screens ───────────────────────────────────
+import ProfileScreen from "./screens/ProfileScreen";
+import LicenseScreen from "./screens/LicenseScreen";
+ 
+export type RootStackParamList = {
+  // Troy
+  Login:           undefined;
+  OfflineLogin:    undefined;
+  BiometricCheck:  undefined;
+  PasswordReset:   undefined;
+  OfflinePinReset: undefined;
+  Profile:         undefined;
+  LicenseDetails:  undefined;
+};
 
 const StackNavigator = createNativeStackNavigator();
-
-export default function App() {
-  const [externalFontsLoaded,setExternalFontsLoaded] = useState(false);
-
-
-  useEffect(()=>{
-   
-      const load = async()=>{
-
-        let isLoaded = await LoadFonts();
-        setExternalFontsLoaded(isLoaded);
         
-      }
-      load();
-  },[])
-
+export default function App() {
+  const [externalFontsLoaded, setExternalFontsLoaded] = useState(false);
+ 
+  useEffect(() => {
+    const load = async () => {
+      let isLoaded = await LoadFonts();
+      setExternalFontsLoaded(isLoaded);
+    };
+    load();
+  }, []);
+ 
   return (
-
    (externalFontsLoaded) && 
   <NavigationContainer>
 
@@ -32,13 +49,17 @@ export default function App() {
 
       <StackNavigator.Screen name="Blank" component={Blank}/>
       <StackNavigator.Screen name="Home" component={HomeScreen}/>
+      
+      <StackNavigator.Screen name="Login"           component={LoginScreen}           />
+      <StackNavigator.Screen name="OfflineLogin"    component={OfflineLoginScreen}    />
+      <StackNavigator.Screen name="BiometricCheck"  component={BiometricScreen}       />
+      <StackNavigator.Screen name="PasswordReset"   component={PasswordResetScreen}   />
+      <StackNavigator.Screen name="OfflinePinReset" component={OfflinePinResetScreen} />
+      <StackNavigator.Screen name="Profile"        component={ProfileScreen} />
+      <StackNavigator.Screen name="LicenseDetails" component={LicenseScreen} />
 
     </StackNavigator.Navigator>
 
   </NavigationContainer>
-
-
-   
-
   );
 }

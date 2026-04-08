@@ -1,22 +1,21 @@
-export const Assets = {
-    
-    backgrounds : {
-       
-        MainFrame:{
-
-            MainbackgroundImage: require("../assets/images/SplashScreenBackGround.png")
-        }
-
+export const Assets: any = {
+  backgrounds: {
+    MainFrame: {
+      MainbackgroundImage: require("../assets/images/SplashScreenBackGround.png"),
     },
-    icons:{
+  },
 
-        TextToSpeech: require("../assets/images/SpeechToTextIconBlack.png"),     
-        profileIcon: require("../assets/images/profile-icon.png"),
-        testIcon: require("../assets/images/android-icon-foreground.png")
-    },
-    logos: {
-        ffLogoName: require("../assets/images/ff-logo-name.png")
-        
-    }
+  // ── Logos ─────────────────────────────────────────────────
+  // ffLogoName is used by both HeaderDefault and HeaderHome in MainFrame.
+  logos: {
+    ffLogoName: require("../assets/images/ff-logo-name.png"), // placeholder, swap for real logo asset
+  },
 
-}
+  // ── Icons ─────────────────────────────────────────────────
+  // profileIcon is used by HeaderHome (main-app header variant).
+  icons: {
+    TextToSpeech: require("../assets/images/SpeechToTextIconBlack.png"),
+    profileIcon: require("../assets/images/profile-icon.png"),
+    testIcon: require("../assets/images/android-icon-foreground.png"),
+  },
+};
