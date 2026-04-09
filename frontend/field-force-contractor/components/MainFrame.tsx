@@ -15,7 +15,8 @@ footerMenu?: MenuOptions
 
 }
 export const MainFrame:FC<Props> = (props) =>{
- 
+
+
   return(<>
     <ImageBackground source={Assets.backgrounds.MainFrame.MainbackgroundImage} style={Styles.MainFrame.BackgroundImageSize}>
       <View style={Styles.MainFrame.Window}>

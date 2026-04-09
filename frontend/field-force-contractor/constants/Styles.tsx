@@ -107,16 +107,19 @@ export const Styles = {
   }),
 
   Menu: StyleSheet.create({
-    container: { width:"100%", minHeight:54, padding:5, backgroundColor:"#00254D", flexDirection:"row", justifyContent:"center", alignItems:"center", overflow:"hidden" },
+    MenuStyle1: { width:"100%", minHeight:54, padding:5, backgroundColor:"#00254D", flexDirection:"row", justifyContent:"center", alignItems:"center", overflow:"hidden" },
+    MenuStyle2: { width:"100%", minHeight:54, padding:5, backgroundColor:"#00254D", flexDirection:"row", justifyContent:"flex-start", alignItems:"center", overflow:"hidden" },
     itemText: { fontFamily: DefaultFont, color: DefaultColor, fontSize:14, padding:5 },
     itemTextPressed: { color:"#FAEECE" },
     menuItem: { justifyContent:"center", alignItems:"center" },
     menuIcon: { width:35, height:35 },
-    headMenuIcon:{width:45,height:45}
+    headMenuStyle2Icon:{width:45,height:45},
+    headerMenuStyle2Text:{fontFamily:DefaultFont, fontSize:21, color:DefaultColor, flex:1, textAlign:"center", paddingRight:"8%"},
+  
   }),
 
   TestStyles: StyleSheet.create({
-    Style1: { width: "80%", height: "80%", marginTop:20, backgroundColor: "red", justifyContent:"center" },
+    Style1: { width: "80%", flex:1, marginTop:20, backgroundColor: "red", justifyContent:"center" },
     Style2: { fontFamily: DefaultFont, fontSize: 30, color: DefaultColor, textAlign: "center" },
     
   }),
