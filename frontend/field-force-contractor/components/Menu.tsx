@@ -62,8 +62,8 @@ export const Menu:FC<Props> = (props) => {
     const v2 = () =>{
       return(
         <View style={Styles.Menu.MenuStyle2}>
-          <Pressable onPress={()=>{nav.navigate("Profile" as any)}}>
-          <Image source={Assets.icons.ProfileIcon} style={Styles.Menu.headMenuStyle2Icon}></Image>
+          <Pressable onPress={()=>{nav.goBack()}}>
+          <Image source={Assets.icons.BackArrow} style={Styles.Menu.headMenuStyle2Icon}></Image>
           </Pressable>
           <Text style={Styles.Menu.headerMenuStyle2Text}>{(props.menuOptions?.[1]?.[0].label === undefined)? props.menuOptions?.[1]?.[0]: "Object Not Supported"}</Text>
         </View>

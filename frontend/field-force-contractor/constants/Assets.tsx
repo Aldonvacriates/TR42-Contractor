@@ -18,6 +18,7 @@ export const Assets = {
     ProfileIcon: require("../assets/images/profileicon.png"),
     HomeIcon: require("../assets/images/home.png"),
     TaskIcon: require("../assets/images/Jobs.png"),
-    ContactIcon:require("../assets/images/contacts.png")
+    ContactIcon:require("../assets/images/contacts.png"),
+    BackArrow:require("../assets/images/BackArrow.png")
   },
 };
