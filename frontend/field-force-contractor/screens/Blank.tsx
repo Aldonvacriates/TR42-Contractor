@@ -10,14 +10,12 @@ export const Blank:FC = () =>{
     useEffect(() =>{
      
 
-        
-     
        
     },[])
 
     return(<>
     
-       <MainFrame  header="home" headerMenu={["Menu2",["Test Page"]]} >
+       <MainFrame  header="default" headerMenu={["Menu2",["Test Page"]]} >
         <SearchBar buttonText="Search"/>
            <View style={Styles.TestStyles.Style1}>
                 
