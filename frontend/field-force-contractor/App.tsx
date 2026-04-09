@@ -5,6 +5,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import {Blank} from "./screens/Blank";
 import HomeScreen from "./screens/HomeScreen"
 import {screenConfig} from "./constants/ScreenConfig";
+import { Contacts } from "./screens/Contacts";
  
 // ── TROY — Auth screens ──────────────────────────────────────
 import LoginScreen           from "./screens/LoginScreen";
@@ -26,6 +27,7 @@ export type RootStackParamList = {
   OfflinePinReset: undefined;
   Profile:         undefined;
   LicenseDetails:  undefined;
+  Contacts:        undefined;
 };
 
 const StackNavigator = createNativeStackNavigator();
@@ -57,6 +59,7 @@ export default function App() {
       <StackNavigator.Screen name="OfflinePinReset" component={OfflinePinResetScreen} />
       <StackNavigator.Screen name="Profile"        component={ProfileScreen} />
       <StackNavigator.Screen name="LicenseDetails" component={LicenseScreen} />
+      <StackNavigator.Screen name="Contacts"       component={Contacts}   />
 
     </StackNavigator.Navigator>
 

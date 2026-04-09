@@ -4,9 +4,9 @@ export const Menus = {
 
  Main:[
 
-    {label:"Home", component: "Blank"},
-    {label:"Assigned", component: "Blank"},
-    {label:"Completed", component: "Blank"},
+    {label:"Home", component: "Home"},
+    {label:"Login", component: "Login"},
+    {label:"Profile", component: "Profile"},
     {label:"In Progress", component: "Blank"},
 
  ],
@@ -14,7 +14,7 @@ export const Menus = {
 
     {label:"Home",icon:Assets.icons.HomeIcon,component:"Home"},
     {label:"Task",icon:Assets.icons.TaskIcon,component:"Task-PlaceHolder"},
-    {label:"Contacts",icon:Assets.icons.ContactIcon,component:"Contact-PlaceHolder"}
+    {label:"Contacts",icon:Assets.icons.ContactIcon,component:"Contacts"}
  ]
 
 

@@ -17,7 +17,7 @@ export const Blank:FC = () =>{
 
     return(<>
     
-       <MainFrame headerMenu={["Menu1",Menus.Main]} footerMenu={["Menu3",Menus.Footer]} >
+       <MainFrame  header="home" headerMenu={["Menu1",Menus.Main]} footerMenu={["Menu3",Menus.Footer]} >
         <SearchBar buttonText="Search"/>
            <View style={Styles.TestStyles.Style1}>
                 

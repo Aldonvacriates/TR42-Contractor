@@ -5,7 +5,9 @@ import {useState,useEffect,useRef} from "react"
 import { MenuItem } from "./MenuItem"
 import {Menus} from "../constants/Menus"
 import {Assets} from "../constants/Assets"
-
+import { useNavigation } from "@react-navigation/native"
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from "@/App"
 type MenuVariant = "Menu1" | "Menu2" |"Menu3" | "none"
 export type MenuItems = {label:string,icon?:string,component:string}
 export type MenuOptions = [MenuVariant,items?:any[]] 
@@ -16,7 +18,8 @@ menuOptions?:MenuOptions
 }
 export const Menu:FC<Props> = (props) => {
     const [options,setIptions] = useState(props.menuOptions)
-    const [viewItem, setView] = useState<any>();
+    const [viewItem, setView] = useState<any>()
+    const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>()
   
     useEffect(()=>{
      
@@ -59,7 +62,9 @@ export const Menu:FC<Props> = (props) => {
     const v2 = () =>{
       return(
         <View style={Styles.Menu.MenuStyle2}>
+          <Pressable onPress={()=>{nav.navigate("Profile" as any)}}>
           <Image source={Assets.icons.ProfileIcon} style={Styles.Menu.headMenuStyle2Icon}></Image>
+          </Pressable>
           <Text style={Styles.Menu.headerMenuStyle2Text}>{(props.menuOptions?.[1]?.[0].label === undefined)? props.menuOptions?.[1]?.[0]: "Object Not Supported"}</Text>
         </View>
       )
