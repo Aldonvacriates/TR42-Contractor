@@ -204,7 +204,7 @@ def get_assigned_tickets():
 
 
 # View all Tickets assigned to contractor's vendor (get by vendor id)
-@field_contractors_bp.route('/assigned-tickets', methods=['GET'])
+@field_contractors_bp.route('/unassigned-tickets-by-vendor', methods=['GET'])
 @token_required
 def get_vendor_unassigned_tickets():
     user_id = request.user_id
