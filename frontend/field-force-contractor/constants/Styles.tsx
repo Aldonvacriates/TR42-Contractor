@@ -7,7 +7,7 @@ export const Styles = {
 
   MainFrame: StyleSheet.create({
     Window:              { width: "100%", height: "100%" },
-    Body:                { alignItems: "center", width: "100%", overflow: "hidden" },
+    Body:                { alignItems: "center", width: "100%", overflow: "hidden",flexDirection:"column"},
     Header:              { width: "100%" },
     Footer:              { justifyContent: "center", alignItems: "center", width: "100%" },
     BackgroundImageSize: { width: "100%", height: "100%" },
@@ -124,6 +124,11 @@ export const Styles = {
    LogoText:{width:250,height:150,resizeMode:"contain", marginTop:-45}
 
 
+
+  }),
+  Contacts: StyleSheet.create({
+   container:{width:"100%", height:150,backgroundColor:"#80AEEA", borderRadius:11, flexDirection:"row"},
+   contactContainer:{flex:1, borderColor:"black", borderStyle:"solid"}
 
   }),
   TestStyles: StyleSheet.create({
