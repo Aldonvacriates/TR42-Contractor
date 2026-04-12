@@ -80,8 +80,6 @@ export default function App() {
       <StackNavigator.Screen name="OfflinePinReset" component={OfflinePinResetScreen} />
       <StackNavigator.Screen name="Profile"        component={ProfileScreen} />
       <StackNavigator.Screen name="LicenseDetails" component={LicenseScreen} />
-   
-      <StackNavigator.Screen name="Contacts"       component={Contacts}   />
       <StackNavigator.Screen name="Tickets"        component={TicketsScreen} />
 
     </StackNavigator.Navigator>
