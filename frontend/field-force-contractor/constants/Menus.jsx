@@ -19,9 +19,11 @@ export const Menus = {
   // icon is used in MenuItem as the image shown above each footer label.
   // component is used in MenuItem as the target screen name passed to navigation.navigate().
 
-  Footer: [
-    { label: "Home", icon: Assets.icons.HomeIcon, component: "Home" },
-    { label: "Tickets", icon: Assets.icons.TaskIcon, component: "SplashScreen" },
-    { label: "Contacts", icon: Assets.icons.ContactIcon, component: "Contacts" },
-  ],
+  Footer:[
+
+    {label:"Home",icon:Assets.icons.HomeIcon,component:"Home"},
+    {label:"Tickets",icon:Assets.icons.TaskIcon,component:"Tickets"},
+    {label:"Contacts",icon:Assets.icons.ContactIcon,component:"Contacts"}
+ ],
 };
+   
