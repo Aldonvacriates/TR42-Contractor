@@ -5,7 +5,7 @@ import { Timespan } from "react-native/Libraries/Utilities/IPerformanceLogger"
 import {Text,View} from "react-native"
 
 
-type MessageType = "sent" | "recived"
+export type MessageType = "sent" | "received"
 type Props = {
     message?:string
     messageId?:number
@@ -17,8 +17,8 @@ type Props = {
 export const Message:FC<Props> =(props) =>{
 
     return(<>
-    <View style={Styles.Chat.messageBoxRecived}>
-        <View style={Styles.Chat.MessageRecieved}>
+    <View style={(props.messageType === "received") ? Styles.Chat.messageBoxRecived : Styles.Chat.messageBoxSent}>
+        <View style={(props.messageType === "received") ? Styles.Chat.MessageRecieved : Styles.Chat.MessageSent}>
             <Text style={Styles.Chat.MessageText}>{props.message}</Text>
         </View>
     </View>

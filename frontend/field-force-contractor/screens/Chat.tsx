@@ -1,31 +1,32 @@
-import { Assets } from "../constants/Assets"
-import {Styles} from "../constants/Styles"
+import { Assets } from "@/constants/Assets"
+import {Styles} from "@/constants/Styles"
 import {FC, ReactNode,useState} from "react"
 import {View,Text,Pressable,Image} from "react-native"
 import { MainFrame } from "@/components/MainFrame"
 import { useRoute } from '@react-navigation/native'
 import { SearchBar } from "@/components/SearchBar"
-import { Message } from "@/components/Message"
+import { Message,MessageType } from "@/components/Message"
 import {InitMessage} from "@/utils/InitMessage"
 
 type Props = {
 
     children:ReactNode
 }
-type MessageType = {
+type TypeMessage = {
 
     messageId?:number
     message:string
     contactId?:string
+    messageType:MessageType
 }
 export const Chat:FC = (props) =>{
 
     const route = useRoute<any>()
     const {name} = route.params
-    const [messages,setMessage] = useState<MessageType[]>([]);
+    const [messages,setMessage] = useState<TypeMessage[]>([]);
     const SendMessage = (mesg:string,contact:string) =>{
      
-        setMessage(prev => [...prev,{message:mesg,messageId:InitMessage.getMessageId(),contact:contact}]);
+        setMessage(prev => [...prev,{message:mesg,messageId:InitMessage.getMessageId(),contact:contact,messageType:"received"}]);
 
     }
     return(<>
