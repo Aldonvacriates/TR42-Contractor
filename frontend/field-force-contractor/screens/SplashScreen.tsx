@@ -14,7 +14,7 @@ const SplashTime = 5000
 
   const timer = setTimeout(() =>{
 
-   nav.navigate("Home" as any)
+   nav.navigate("Login" as any)
 
   },SplashTime)
 
