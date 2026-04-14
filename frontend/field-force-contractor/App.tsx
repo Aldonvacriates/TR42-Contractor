@@ -9,6 +9,7 @@ import {screenConfig} from "./constants/ScreenConfig";
 import { Contacts } from "./screens/Contacts";
 import { SplashScreen } from "./screens/SplashScreen";
 import TicketsScreen from "./screens/TicketsScreen";
+import TicketDetailScreen from "./screens/TicketDetailScreen";
  
 // ── TROY — Auth screens ──────────────────────────────────────
 import LoginScreen           from "./screens/LoginScreen";
@@ -29,6 +30,7 @@ export type RootStackParamList = {
   // ── Charlie — App screens ───────────────────────────────────
   Contacts:      undefined;
   Tickets:       undefined;
+  TicketDetail: { taskId: number };
 
   // ── Jonathan — Work Orders (placeholder until real screen built) ──
   JobDetail:     { jobId: string; workOrderId: string };
@@ -84,6 +86,7 @@ export default function App() {
       <StackNavigator.Screen name="LicenseDetails" component={LicenseScreen} />
       <StackNavigator.Screen name="Contacts"       component={Contacts}   />
       <StackNavigator.Screen name="Tickets"        component={TicketsScreen} />
+      <StackNavigator.Screen name="TicketDetail"   component={TicketDetailScreen} />
 
     </StackNavigator.Navigator>
 
