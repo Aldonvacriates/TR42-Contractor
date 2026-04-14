@@ -69,7 +69,9 @@ def submit_inspection():
         return jsonify({'error': 'Inspection template not found.'}), 404
 
     # Determine overall status
-    if data['no_issues_found']:
+    if data['skipped']:
+        status = 'skipped'
+    elif data['no_issues_found']:
         status = 'passed'
     else:
         # If any item failed, the inspection status is 'failed'
@@ -81,13 +83,17 @@ def submit_inspection():
         contractor_id=request.user_id,
         status=status,
         no_issues_found=data['no_issues_found'],
+        skipped=data['skipped'],
         submitted_at=datetime.now(timezone.utc),
         notes=data.get('notes'),
     )
     db.session.add(inspection)
     db.session.flush()  # get the inspection.id before adding results
 
-    if data['no_issues_found']:
+    if data['skipped']:
+        # User tapped X to skip. Record the bypass but don't create item results.
+        pass
+    elif data['no_issues_found']:
         # Auto-create passed results for every item in the template
         all_items = (
             db.session.query(InspectionItems)

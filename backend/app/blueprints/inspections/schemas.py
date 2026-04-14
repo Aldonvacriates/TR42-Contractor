@@ -51,9 +51,17 @@ class ItemResultInputSchema(Schema):
 
 
 class InspectionSubmitSchema(Schema):
-    """Payload for submitting an inspection."""
+    """Payload for submitting an inspection.
+
+    - no_issues_found=true  → all items auto-marked as passed.
+    - skipped=true          → user tapped the X on the modal. No results created.
+                              Status is recorded as 'skipped' so leadership can
+                              still see who bypassed the inspection.
+    - Otherwise             → per-item results[] must be provided.
+    """
     template_id = fields.Int(required=True)
-    no_issues_found = fields.Bool(required=True)
+    no_issues_found = fields.Bool(required=False, load_default=False)
+    skipped = fields.Bool(required=False, load_default=False)
     results = fields.List(fields.Nested(ItemResultInputSchema), required=False, load_default=[])
     notes = fields.Str(required=False, load_default=None)
 

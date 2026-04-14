@@ -145,8 +145,9 @@ class Inspections(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     template_id: Mapped[int] = mapped_column(ForeignKey('inspection_templates.id'), nullable=False)
     contractor_id: Mapped[int] = mapped_column(ForeignKey('contractors.id'), nullable=False)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default='pending')  # pending, passed, failed
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default='pending')  # pending, passed, failed, skipped
     no_issues_found: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    skipped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
     notes: Mapped[str] = mapped_column(String(1000), nullable=True)
