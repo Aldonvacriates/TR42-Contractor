@@ -15,7 +15,7 @@ export const Blank:FC = () =>{
 
     return(<>
     
-       <MainFrame strip="all">
+       <MainFrame>
       
        </MainFrame>
     

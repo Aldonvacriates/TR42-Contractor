@@ -1,10 +1,11 @@
 import {Styles} from "@/constants/Styles"
 import {Assets} from "@/constants/Assets"
-import {FC,ReactNode,useEffect,useState} from "react"
-import {View,ImageBackground,Text,ScrollView,Image,} from "react-native"
+import {FC,ReactNode} from "react"
+import {View,ImageBackground,ScrollView} from "react-native"
 import {Header,HeaderVariant} from "@/components/Header"
 import { Menu,MenuOptions}  from "@/components/Menu"
 import {Menus} from "@/constants/Menus"
+import { useRoute } from "@react-navigation/native"
 
 type Props = {
 children?:ReactNode
@@ -15,11 +16,12 @@ strip?: "menus" | "all" | "header"
 }
 
 export const MainFrame:FC<Props> = (props) =>{
-
+ const route = useRoute();
+ const pageName = route.name;
  const renderHeaderMenu: MenuOptions =
   props.strip === "menus" || props.strip === "all"
     ? ["none",[]]
-    : props.headerMenu ?? ["Menu2", ["Home"]];
+    : props.headerMenu ?? ["Menu2", [pageName]];
 
  const renderFooterMenu: MenuOptions =
   props.strip === "menus" || props.strip === "all"
