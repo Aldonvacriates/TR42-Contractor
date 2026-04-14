@@ -9,12 +9,12 @@ import { Assets } from "@/constants/Assets";
 
 export const SplashScreen:FC = () =>{
 const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>()
-const SplashTime = 5000
+const SplashTime = 2500
  useEffect(() =>{
 
   const timer = setTimeout(() =>{
 
-   nav.navigate("Blank" as any)
+   nav.navigate("Login" as any)
 
   },SplashTime)
 
@@ -22,7 +22,7 @@ const SplashTime = 5000
 
  return(<>
  
-  <MainFrame header="none" headerMenu={["none"]} footerMenu={["none"]}>
+  <MainFrame strip="all">
 
     <View style={Styles.SplashScreen.Block}>
 
