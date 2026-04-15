@@ -1,4 +1,4 @@
-import {FC,ReactNode,useState} from "react"
+import {FC,useState} from "react"
 import { MainFrame } from "@/components/MainFrame"
 import { SearchBar } from "@/components/SearchBar"
 import { ContactCard } from "@/components/ContactCard"
@@ -11,9 +11,14 @@ export const Contacts:FC = (props) => {
 
     ]
     const [contacts,setContacts] = useState(contactData)
+    const Search:FC = () =>{
+       return(
+           <SearchBar onClick={()=>{console.log("Search Contacts Clicked")}}/>
+       )
+    }
     return(<>
-    <MainFrame header="home" headerMenu={["Menu2",["Contacts"]]}>
-     <SearchBar onClick={()=>{console.log("Search Contacts Clicked")}}/>
+    <MainFrame header="home" headerMenu={["Menu2",["Contacts"]]} injectHeader={<Search/>}>
+    
       {
         contactData.map((item) =>{
           return( <ContactCard key={item.id} phoneNumber={item.phone} name={item.name}/>)

@@ -1,7 +1,6 @@
-import { Assets } from "@/constants/Assets"
 import {Styles} from "@/constants/Styles"
-import {FC, ReactNode,useEffect,useState} from "react"
-import {View,Text,Pressable,Image,FlatList} from "react-native"
+import {FC, ReactNode,useState} from "react"
+import {View} from "react-native"
 import { MainFrame } from "@/components/MainFrame"
 import { useRoute } from '@react-navigation/native'
 import { SearchBar } from "@/components/SearchBar"

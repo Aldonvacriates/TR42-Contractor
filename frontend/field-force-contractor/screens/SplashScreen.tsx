@@ -3,7 +3,7 @@ import { useNavigation } from "@react-navigation/native"
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from "@/App"
 import { MainFrame } from "@/components/MainFrame";
-import {View,Text,Image} from "react-native"
+import {View,Image} from "react-native"
 import { Styles } from "@/constants/Styles";
 import { Assets } from "@/constants/Assets";
 
@@ -14,7 +14,7 @@ const SplashTime = 2500
 
   const timer = setTimeout(() =>{
 
-   nav.navigate("Login" as any)
+   nav.navigate("Home")
 
   },SplashTime)
 
