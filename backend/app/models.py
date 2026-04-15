@@ -96,6 +96,80 @@ class Tickets(Base):
 
 #vendors and clients to be updated
 
+# ── Inspection models ─────────────────────────────────────────────────────────
+# Checklist sections and items are stored in the DB so vendors/admins can
+# configure them dynamically — no code changes needed to add a new section.
+
+class InspectionTemplates(Base):
+    """A named checklist template (e.g. 'Truck Pre-Trip Inspection')."""
+    __tablename__ = 'inspection_templates'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
+
+    sections = relationship("InspectionSections", back_populates="template", order_by="InspectionSections.display_order")
+
+
+class InspectionSections(Base):
+    """A section within a template (e.g. 'Engine Compartment', 'Lights Check')."""
+    __tablename__ = 'inspection_sections'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey('inspection_templates.id'), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    display_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    template = relationship("InspectionTemplates", back_populates="sections")
+    items = relationship("InspectionItems", back_populates="section", order_by="InspectionItems.display_order")
+
+
+class InspectionItems(Base):
+    """An individual check within a section (e.g. 'Check oil level')."""
+    __tablename__ = 'inspection_items'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    section_id: Mapped[int] = mapped_column(ForeignKey('inspection_sections.id'), nullable=False)
+    label: Mapped[str] = mapped_column(String(300), nullable=False)
+    display_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    section = relationship("InspectionSections", back_populates="items")
+
+
+class Inspections(Base):
+    """A completed (or in-progress) inspection by a contractor."""
+    __tablename__ = 'inspections'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    template_id: Mapped[int] = mapped_column(ForeignKey('inspection_templates.id'), nullable=False)
+    contractor_id: Mapped[int] = mapped_column(ForeignKey('contractors.id'), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default='pending')  # pending, passed, failed, skipped
+    no_issues_found: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    skipped: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
+    notes: Mapped[str] = mapped_column(String(1000), nullable=True)
+
+    template = relationship("InspectionTemplates")
+    results = relationship("InspectionResults", back_populates="inspection")
+
+
+class InspectionResults(Base):
+    """Per-item result for an inspection (passed or failed + optional note)."""
+    __tablename__ = 'inspection_results'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    inspection_id: Mapped[int] = mapped_column(ForeignKey('inspections.id'), nullable=False)
+    item_id: Mapped[int] = mapped_column(ForeignKey('inspection_items.id'), nullable=False)
+    passed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    note: Mapped[str] = mapped_column(String(500), nullable=True)
+
+    inspection = relationship("Inspections", back_populates="results")
+    item = relationship("InspectionItems")
+
+
 class Vendors(Base):
     __tablename__ = 'vendors'
 
