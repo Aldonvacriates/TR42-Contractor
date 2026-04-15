@@ -49,19 +49,23 @@ export const Chat:FC = (props) =>{
         setMessage(prev => [...prev,{message:mesg,contact:contact,messageType:send}]);
 
     }
+    const Search:FC =() => {
+        return(
+         <SearchBar placeHolder="Message..." buttonText="Send" onClick={(msg:string)=>{(msg) && SendMessage(msg,"01")}}/>
+        )
+    }
     return(<>
-    <MainFrame headerMenu={["Menu2",[name]]}>
-        
-          {
-            messages.map((item) => {
-            const id = InitMessage.getMessageId();
-            return(<Message key={id} messageId={id} message={item.message} contactId={item.contact} messageType={item.messageType}></Message>)
-            })
-          }
+    <MainFrame headerMenu={["Menu2",[name]]} injectFooter={<Search/>} >
+          <View style={Styles.Chat.container}>
+            {
+                messages.map((item) => {
+                const id = InitMessage.getMessageId();
+                return(<Message key={id} messageId={id} message={item.message} contactId={item.contact} messageType={item.messageType}></Message>)
+                })
+            }
+          </View>
       
-        <View style={Styles.Chat.sendBar}>
-            <SearchBar placeHolder="Message..." buttonText="Send" onClick={(msg:string)=>{(msg) && SendMessage(msg,"01")}}/>
-        </View>
+        
     </MainFrame>
 
     </>)

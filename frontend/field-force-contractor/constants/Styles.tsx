@@ -15,7 +15,7 @@ export const Styles = {
   // SpaceHeader is used in MainFrame as the black spacer bar above and below the main content.
   MainFrame: StyleSheet.create({
     Window: { width: "100%", height: "100%" },
-    Body: { flex:1, alignItems:"center", width: "100%", overflow: "hidden", justifyContent:"flex-start", flexDirection: "column" },
+    Body: { alignItems:"center", width: "100%", overflow: "hidden", justifyContent:"flex-start", flexDirection: "column" },
     Header: { width: "100%" },
     Footer: { justifyContent: "center", alignItems: "center", width: "100%" },
     BackgroundImageSize: { width: "100%", height: "100%" },
@@ -131,12 +131,14 @@ export const Styles = {
  //──────Jonathan───────Chat ────────────────────────────────────────────
   Chat: StyleSheet.create({
 
+   container:{width:"100%",height:"100%", padding:10},
    sendBar:{marginTop:"auto",width:"100%"},
    messageBoxReceived:{flexDirection:"row", justifyContent:"flex-start",width:"100%", alignItems:"center"},
    messageBoxSent:{flexDirection:"row", justifyContent:"flex-end",width:"100%",alignItems:"center"},
    messageSent:{justifyContent:"center", minHeight:65,maxWidth:"65%",borderRadius:11,backgroundColor:"#007CFF",marginTop:5,marginRight:10,marginLeft:10},
    messageReceived:{justifyContent:"center",minHeight:65,maxWidth:"65%",borderRadius:11, backgroundColor:"#30E852",marginTop:5,marginRight:10,marginLeft:10},
    messageText:{fontFamily:DefaultFont,color:DefaultColor,fontSize:16,marginLeft:15,marginRight:15},
+   timeText:{fontFamily:DefaultFont,color:DefaultColor,fontSize:14},
    chatIcon:{width:35,height:35,marginRight:5,marginLeft:5}
 
   })

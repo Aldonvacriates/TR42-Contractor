@@ -13,6 +13,8 @@ header?: HeaderVariant
 headerMenu?: MenuOptions
 footerMenu?: MenuOptions
 strip?: "menus" | "all" | "header"
+injectHeader?:ReactNode
+injectFooter?:ReactNode
 }
 
 export const MainFrame:FC<Props> = (props) =>{
@@ -37,6 +39,9 @@ export const MainFrame:FC<Props> = (props) =>{
         <View style={Styles.MainFrame.SpaceHeader}/>
         <Header  header={renderHeader}/>
         <Menu menuOptions={renderHeaderMenu} />
+        {
+          props.injectHeader
+        }
         </View>
 
         <ScrollView contentContainerStyle={Styles.MainFrame.Body}>
@@ -46,6 +51,9 @@ export const MainFrame:FC<Props> = (props) =>{
         </ScrollView>
 
         <View style={Styles.MainFrame.Footer}>
+           {
+            props.injectFooter
+           }
           <Menu menuOptions={renderFooterMenu}/>
           <View style={Styles.MainFrame.SpaceHeader}/>
         </View>

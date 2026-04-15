@@ -18,8 +18,8 @@ export const SearchBar:FC<props> = (props) => {
  const[message,setMessage] = useState<string>("");
     return(<>
     <View style={Styles.SearchBar.Bar}>
-        <TextInput onChangeText={setMessage} style={Styles.SearchBar.SearchInput} placeholder={searchPlaceHolder}/>
-        <Pressable onPress = {() =>{setMessage(props.onClick(message))}} style={({pressed}) => 
+        <TextInput value={message} onChangeText={setMessage} style={Styles.SearchBar.SearchInput} placeholder={searchPlaceHolder}/>
+        <Pressable onPress = {() =>{props.onClick(message); setMessage("");}} style={({pressed}) => 
             [Styles.SearchBar.SearchButton,
               {backgroundColor: (pressed) ? Styles.SearchBar.SearchButtonPressed.backgroundColor : Styles.SearchBar.SearchButton.backgroundColor}
             ]}>
