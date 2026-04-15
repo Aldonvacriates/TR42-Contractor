@@ -84,6 +84,7 @@ class Tickets(Base):
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     start_location: Mapped[str] = mapped_column(String(500), nullable=True)
     end_location: Mapped[str] = mapped_column(String(500), nullable=True)
+    designated_route: Mapped[str] = mapped_column(String(500), nullable=True)
 
     estimated_quantity: Mapped[float] = mapped_column(Float)
     unit: Mapped[str] = mapped_column(String(360))

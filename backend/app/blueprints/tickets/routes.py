@@ -65,6 +65,9 @@ def update_ticket(ticket_id):
                     ticket.anomaly_flag = True
                     ticket.anomaly_reason = "Logged end time is before logged start time."
 
+                if ticket_update_data["end_location"] == ticket.start_location and ticket.designated_route is not None:
+                    ticket.anomaly_flag = True
+                    ticket.anomaly_reason = "There is a designated route. Logged end location should show as different from start location."
                 
         setattr(ticket, key, value)
 
