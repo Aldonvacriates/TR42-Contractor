@@ -85,7 +85,7 @@ class Tickets(Base):
     start_location: Mapped[str] = mapped_column(String(500), nullable=True)
     end_location: Mapped[str] = mapped_column(String(500), nullable=True)
     designated_route: Mapped[str] = mapped_column(String(500), nullable=True)
-
+    
     estimated_quantity: Mapped[float] = mapped_column(Float)
     unit: Mapped[str] = mapped_column(String(360))
     special_requirements: Mapped[str] = mapped_column(String(500))

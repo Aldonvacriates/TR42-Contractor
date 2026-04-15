@@ -69,6 +69,11 @@ def update_ticket(ticket_id):
                     ticket.anomaly_flag = True
                     ticket.anomaly_reason = "There is a designated route. Logged end location should show as different from start location."
                 
+                #Check for time anomaly (look into how to check against estimated_duration. How long before anomaly time throws up a flag?)
+                #Consider an hour difference to be significant in the meantime
+
+            
+
         setattr(ticket, key, value)
 
     db.session.commit()
