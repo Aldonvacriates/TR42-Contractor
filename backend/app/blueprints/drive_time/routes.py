@@ -9,6 +9,13 @@ from datetime import datetime, timezone, date, timedelta
 
 VALID_STATUSES = {'driving', 'on_duty', 'off_duty', 'sleeper_berth'}
 
+
+def _ensure_utc(dt):
+    """SQLite returns naive datetimes — attach UTC tzinfo if missing."""
+    if dt is None:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
 # FMCSA limits (in seconds)
 DAILY_DRIVE_LIMIT = 11 * 3600       # 11 hours driving per day
 DAILY_ON_DUTY_LIMIT = 14 * 3600     # 14-hour on-duty window
@@ -24,10 +31,7 @@ def _total_driving_seconds(session):
             if log.duration_seconds is not None:
                 total += log.duration_seconds
             elif log.end_time is None:
-                # Currently driving — count elapsed time
-                # SQLite returns naive datetimes, so attach UTC if missing
-                start = log.start_time if log.start_time.tzinfo else log.start_time.replace(tzinfo=timezone.utc)
-                total += int((now - start).total_seconds())
+                total += int((now - _ensure_utc(log.start_time)).total_seconds())
     return total
 
 
@@ -110,7 +114,7 @@ def change_status():
     now = datetime.now(timezone.utc)
     session = _get_or_create_session(contractor_id)
 
-    if session.current_status == new_status:
+    if session.current_status == new_status and session.is_active:
         return jsonify({'error': f'Already in {new_status} status.'}), 400
 
     # Close the current active log (if any)
@@ -122,7 +126,7 @@ def change_status():
 
     if active_log:
         active_log.end_time = now
-        active_log.duration_seconds = int((now - active_log.start_time).total_seconds())
+        active_log.duration_seconds = int((now - _ensure_utc(active_log.start_time)).total_seconds())
 
     # Create a new log for the new status
     new_log = DutyLogs(
@@ -172,7 +176,7 @@ def stop_session():
 
     if active_log:
         active_log.end_time = now
-        active_log.duration_seconds = int((now - active_log.start_time).total_seconds())
+        active_log.duration_seconds = int((now - _ensure_utc(active_log.start_time)).total_seconds())
 
     session.is_active = False
     session.ended_at = now
