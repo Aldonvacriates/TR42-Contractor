@@ -171,6 +171,43 @@ class InspectionResults(Base):
     item = relationship("InspectionItems")
 
 
+# ── Drive Time / Hours of Service models ──────────────────────────────────────
+# FMCSA-style duty status tracking. A DutySession represents a shift (from
+# first status change to end-of-day). DutyLogs are the individual segments
+# within that session (driving, on-duty, off-duty, sleeper-berth).
+
+class DutySessions(Base):
+    """A contractor's duty session for a given day / shift."""
+    __tablename__ = 'duty_sessions'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    contractor_id: Mapped[int] = mapped_column(ForeignKey('contractors.id'), nullable=False)
+    current_status: Mapped[str] = mapped_column(String(20), nullable=False, default='off_duty')  # driving, on_duty, off_duty, sleeper_berth
+    session_date: Mapped[date] = mapped_column(Date, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
+    ended_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
+
+    logs = relationship("DutyLogs", back_populates="session", order_by="DutyLogs.start_time")
+
+
+class DutyLogs(Base):
+    """A single duty segment within a session (e.g. 6:30 AM–10:15 AM Driving)."""
+    __tablename__ = 'duty_logs'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey('duty_sessions.id'), nullable=False)
+    contractor_id: Mapped[int] = mapped_column(ForeignKey('contractors.id'), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False)  # driving, on_duty, off_duty, sleeper_berth
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)  # null = currently active
+    duration_seconds: Mapped[int] = mapped_column(Integer, nullable=True)  # computed when end_time is set
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
+
+    session = relationship("DutySessions", back_populates="logs")
+
+
 class Vendors(Base):
     __tablename__ = 'vendors'
 
