@@ -13,12 +13,14 @@ class SaveReportSchema(Schema):
     description         = fields.Str(required=True)
     recommended_actions = fields.List(fields.Str(), required=True)
     raw_notes           = fields.Str(required=False, load_default=None)
+    inspection_id       = fields.Int(required=False, load_default=None)  # optional link to Inspections row
 
 
 class AiReportSchema(Schema):
     """Shape of a saved report returned to the client."""
     id                  = fields.Int()
     contractor_id       = fields.Int()
+    inspection_id       = fields.Int(allow_none=True)
     title               = fields.Str()
     priority            = fields.Str()
     category            = fields.Str()

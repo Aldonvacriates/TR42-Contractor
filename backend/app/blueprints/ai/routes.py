@@ -92,6 +92,7 @@ def save_report():
 
     report = AiInspectionReports(
         contractor_id       = request.user_id,
+        inspection_id       = data.get('inspection_id'),
         title               = data['title'],
         priority            = data['priority'],
         category            = data['category'],
