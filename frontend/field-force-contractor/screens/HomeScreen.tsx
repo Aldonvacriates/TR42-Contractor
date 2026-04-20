@@ -10,7 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 // ─── DEV MODE — set to false before shipping ──────────────────────────────────
 const DEV_MODE = true;
 
-type Nav = NativeStackNavigationProp<RootStackParamList>;
+type Nav = NativeStackNavigationProp<RootStackParamList, 'Dashboard'>;
 type Status = 'driving' | 'work' | 'offline';
 
 const statusOptions: { value: Status; label: string; color: string; bg: string; border: string }[] = [
