@@ -37,8 +37,8 @@ def login():
     else:
         user = db.session.query(Auth_users).where(Auth_users.username == identifier).first()
 
-    if user and check_password_hash(user.password, data['password']):
-        token = encode_token(user.id, user.role)
+    if user and check_password_hash(user.password_hash, data['password']):
+        token = encode_token(user.id, user.user_type)
         return jsonify({
             'message': 'Successfully Logged in',
             'token': token,
@@ -92,8 +92,8 @@ def update_password():
         user_id = request.user_id
         auth_user = db.session.get(Auth_users, user_id)
 
-        if auth_user and check_password_hash(auth_user.password, current_password):
-            auth_user.password = generate_password_hash(new_password)
+        if auth_user and check_password_hash(auth_user.password_hash, current_password):
+            auth_user.password_hash = generate_password_hash(new_password)
 
             db.session.commit()    
     
