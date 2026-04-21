@@ -50,8 +50,8 @@ class Contractor(Base):
    
     role: Mapped[str] = mapped_column(String(360), nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False)
-    ticket_completed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    ticket_open: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tickets_completed: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    tickets_open: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     
     biometric_enrolled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_onboarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -63,9 +63,6 @@ class Contractor(Base):
     average_rating: Mapped[float] = mapped_column(Float, nullable=True)
     years_experience: Mapped[int] = mapped_column(Integer, nullable=True)
     preferred_job_types: Mapped[str] = mapped_column(String(500), nullable=True)
-
-    # license_number: Mapped[str] = mapped_column(String(20), nullable=False)
-    # expiration_date: Mapped[date] = mapped_column(Date, nullable=False)
     
     offline_pin: Mapped[str] = mapped_column(String(10), nullable=True) #add to erd
     

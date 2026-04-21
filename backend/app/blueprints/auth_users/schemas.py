@@ -1,11 +1,11 @@
 from app.extensions import ma
-from app.models import Auth_users
+from app.models import User
 from marshmallow import fields, Schema
 
 class AuthUserSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        model = Auth_users
-        load_only = ("password",)
+        model = User
+        load_only = ("password_hash",)
         include_fk = True
 
 class LoginSchema(Schema):
@@ -17,14 +17,14 @@ class LoginSchema(Schema):
     identifier = fields.Str(required=False)
     username = fields.Str(required=False)
     email = fields.Str(required=False)
-    password = fields.Str(required=True)
+    password_hash = fields.Str(required=True)
 
 class AuthUserUpdateSchema(Schema):
     email = fields.Email(required=False)
 #ex. use in contractor update routes
 
 class AuthUserCreateSchema(AuthUserSchema):
-    role = fields.Str(required=False) #this is to not have role be taken from request body when creating user
+    user_type = fields.Str(required=False) #this is to not have user_type be taken from request body when creating user
     created_by = fields.Int(required=False) #this will be derived from the token of the user creating the new user, not from request body
 
 class AuthUserUpdatePasswordSchema(Schema):

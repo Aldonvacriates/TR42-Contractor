@@ -1,5 +1,5 @@
 from flask import request, jsonify
-from app.models import Auth_users, Contractors, Tickets, db
+from app.models import User, Contractor, Ticket, db
 from .schemas import contractor_schema, contractor_update_schema, vendor_update_contractor_schema
 from ..auth_users.schemas import auth_user_update_schema, auth_user_create_schema
 from ..tickets.schemas import tickets_schema
@@ -21,58 +21,69 @@ def register_contractor():
 
     # Validate and deserialize input
     try:
-        auth_user_data = auth_user_create_schema.load(json_data.get('auth_user', {}))
+        user_data = auth_user_create_schema.load(json_data.get('user', {}))
         contractor_data = contractor_schema.load(json_data.get('contractor', {}))
     except ValidationError as e:
         return jsonify(e.messages), 400
 
     # Check if user already exists
-    existing_user = db.session.query(Auth_users).filter(Auth_users.username == auth_user_data['username']).first()
+    existing_user = db.session.query(User).filter(User.username == user_data['username']).first()
     if existing_user:
         return jsonify({'error': 'User with this username already exists'}), 400
 
     # Create new user
-    new_auth_user = Auth_users(
-        email=auth_user_data['email'],
-        username=auth_user_data['username'],
-        password=generate_password_hash(auth_user_data['password']),
-        role='contractor',
+    new_user = User(
+        email=user_data['email'],
+        username=user_data['username'],
+        password_hash=generate_password_hash(user_data['password_hash']),
+        user_type='contractor',
         created_by=request.user_id
     )
-    db.session.add(new_auth_user)
+    db.session.add(new_user)
     db.session.flush()  # Get the ID of the newly created user
 
     # Create new contractor
-    new_contractor = Contractors(
-        id=new_auth_user.id,
-        vendor_id=contractor_data['vendor_id'],
-        manager_id=contractor_data['manager_id'],
-        first_name=contractor_data['first_name'],
-        last_name=contractor_data['last_name'],
-        license_number=contractor_data['license_number'],
-        expiration_date=contractor_data['expiration_date'],
-        contractor_type=contractor_data['contractor_type'],
+    new_contractor = Contractor(
+        employee_number=contractor_data['employee_number'],
+        user_id=new_user.id,
+        role=contractor_data['role'],
         status=contractor_data['status'],
-        tax_classification=contractor_data['tax_classification'],
-        contact_number=contractor_data['contact_number'],
-        date_of_birth=contractor_data['date_of_birth'],
-        address=contractor_data['address'],
+        tickets_completed=contractor_data.get('tickets_completed', 0),
+        tickets_open=contractor_data.get('tickets_open', 0),
+        biometric_enrolled=contractor_data.get('biometric_enrolled', False),
+        is_onboarded=contractor_data.get('is_onboarded', False),
+        is_subcontractor=contractor_data.get('is_subcontractor', False),
+        is_fte=contractor_data.get('is_fte', False),
+        is_licensed=contractor_data.get('is_licensed', False),
+        is_insured=contractor_data.get('is_insured', False),
+        is_certified=contractor_data.get('is_certified', False),
+        average_rating=contractor_data.get('average_rating', None),
+        years_experience=contractor_data.get('years_experience', None),
+        preferred_job_types=contractor_data.get('preferred_job_types', None),
+
+        offline_pin=contractor_data.get('offline_pin', None),
+
+        created_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+        created_by=request.user_id,
+        updated_by=request.user_id
+        
     )
     db.session.add(new_contractor)
     db.session.commit()
 
     return jsonify({
         'message': 'Contractor registered successfully',
-        'auth_user': auth_user_update_schema.dump(new_auth_user),
+        'auth_user': auth_user_update_schema.dump(new_user),
         'contractor': contractor_schema.dump(new_contractor)
     }), 201
 
-# View User Profile
+# Contractor view Profile
 @field_contractors_bp.route('/profile', methods=['GET'])
 @token_required
 def get_contractor():
     user_id= request.user_id
-    user = db.session.get(Contractors, user_id)
+    user = db.session.get(Contractor, user_id)
     if user:
         return contractor_schema.jsonify(user), 200
     return jsonify ({'error': 'Invalid user id'}), 400
@@ -82,7 +93,7 @@ def get_contractor():
 @field_contractors_bp.route('/<int:contractor_id>', methods=['GET'])
 @vendor_required
 def get_contractor_as_vendor(contractor_id):
-    user = db.session.get(Contractors, contractor_id)
+    user = db.session.get(Contractor, contractor_id)
     if user:
         return contractor_schema.jsonify(user), 200
     return jsonify ({'error': 'Invalid user id'}), 400
@@ -105,7 +116,7 @@ def update_contractor_as_vendor(contractor_id):
     if not auth_user_data and not contractor_data:
         return jsonify({'error': 'No data to update'}), 400
     
-    contractor = db.session.get(Contractors, contractor_id)
+    contractor = db.session.get(Contractor, contractor_id)
 
     
     if not contractor or not contractor.auth_user:
@@ -137,7 +148,7 @@ def update_contractor_as_vendor(contractor_id):
     }), 200
 
 
-
+#--------->user profile can change in 152, the contractor profile is only offline pin.
 # Update Profile (need to be able to update email, contact number, address - anything else will be through vendor)
 @field_contractors_bp.route('/profile', methods=['PUT'])
 @token_required
@@ -149,16 +160,16 @@ def update_contractor():
 
     # Validate and deserialize new updated input
     try:
-        auth_user_data = auth_user_update_schema.load(json_data.get('auth_user', {})) 
+        user_data = auth_user_update_schema.load(json_data.get('auth_user', {})) 
         contractor_data = contractor_update_schema.load(json_data.get('contractor', {}))
     except ValidationError as e:
         return jsonify(e.messages), 400
-    if not auth_user_data and not contractor_data:
+    if not user_data and not contractor_data:
         return jsonify({'error': 'No data to update'}), 400
     
     #user_id from token
     user_id = request.user_id
-    contractor = db.session.get(Contractors, user_id)
+    contractor = db.session.get(Contractor, user_id)
 
     if not contractor or not contractor.auth_user:
             return jsonify({'error': 'Invalid User Id'}), 404
@@ -166,7 +177,7 @@ def update_contractor():
     auth_user = contractor.auth_user
 
     try: 
-        for key, value in auth_user_data.items():
+        for key, value in user_data.items():
             setattr(auth_user, key, value)
         for key, value in contractor_data.items():
             setattr(contractor, key, value)
@@ -185,7 +196,7 @@ def update_contractor():
     }), 200
 
 
-#Update password route exists is in auth_user
+#Update password route exists is in user
 
 #Update offline pin route
 
@@ -195,33 +206,33 @@ def update_contractor():
 #----------------------------------------------------------
 #TICKET ROUTES BY CONTRACTOR - view assigned tickets and unassigned tickets by vendor
 
-# View all Tickets assigned to contractor
+# View all tickets assigned to contractor
 @field_contractors_bp.route('/assigned-tickets', methods=['GET'])
 @token_required
 def get_assigned_tickets():
     user_id = request.user_id
 
     try:
-        tickets = db.session.query(Tickets).filter(Tickets.assigned_contractor == user_id).all()
+        tickets = db.session.query(Ticket).filter(Ticket.assigned_contractor == user_id).all()
         return tickets_schema.jsonify(tickets), 200
     except Exception as e:
         return jsonify({'error': 'Failed to retrieve tickets'}), 500
 
 
-# View all Tickets assigned to contractor's vendor, but not assigned to contractor (get by vendor id)
+# View all tickets assigned to contractor's vendor, but not assigned to contractor (get by vendor id)
 @field_contractors_bp.route('/unassigned-tickets-by-vendor', methods=['GET'])
 @token_required
 def get_vendor_unassigned_tickets():
     user_id = request.user_id
     
     try:
-        user = db.session.get(Contractors, user_id)
+        user = db.session.get(Contractor, user_id)
         if not user:
             return jsonify ({'error': 'Invalid user id'}), 400
         
         vendor_id = user.vendor_id
 
-        tickets = db.session.query(Tickets).filter(Tickets.vendor_id == vendor_id).all()
+        tickets = db.session.query(Ticket).filter(Ticket.vendor_id == vendor_id).all()
         return tickets_schema.jsonify(tickets), 200
     except Exception as e:
         return jsonify({'error': 'Failed to retrieve tickets'}), 500
