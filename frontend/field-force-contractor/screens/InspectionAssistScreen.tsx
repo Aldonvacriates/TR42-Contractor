@@ -26,7 +26,7 @@ import { api } from '@/utils/api'
 type MessageType = 'sent' | 'received'
 
 type ChatMessage = {
-    id: number
+    id: string
     message: string
     messageType: MessageType
     timeStamp: string
@@ -213,7 +213,7 @@ export const InspectionAssistScreen: FC = () => {
         }
     }
 
-    const handleSaveReport = async (msgId: number, report: InspectionReport, rawNotes: string) => {
+    const handleSaveReport = async (msgId: string, report: InspectionReport, rawNotes: string) => {
         try {
             await api.authPost('/api/ai/save-report', {
                 title:               report.title,

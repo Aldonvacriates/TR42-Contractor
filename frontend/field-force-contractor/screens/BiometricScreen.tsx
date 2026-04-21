@@ -89,9 +89,9 @@ export default function BiometricScreen() {
         await login(pendingToken, pendingUser);
         // No navigation.replace here — login() flips isAuthenticated, which
         // causes RootNavigator to swap the Auth stack out for the Protected
-        // stack. SplashScreen (the initial route in both) then routes to
-        // Inspection. Calling replace('Home') on the unmounted Auth navigator
-        // throws "Home not handled by any navigator".
+        // stack. The Protected stack opens directly at its initialRouteName
+        // (Inspection). Calling replace() on the now-unmounted Auth navigator
+        // would throw "Home not handled by any navigator".
         return;
       }
       const scanWorked = Math.random() > 0.3;

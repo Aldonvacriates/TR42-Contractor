@@ -80,11 +80,11 @@ export default function OfflineLoginScreen() {
       setPinError('Incorrect PIN. Please try again.');
       return;
     }
-    // TODO (Troy): this needs to call useAuth().login(storedToken, storedUser)
-    // so isAuthenticated flips and RootNavigator swaps to the Protected stack.
-    // Right now replace('Home') targets the Auth navigator which has no Home,
-    // so it will throw "Home not handled by any navigator".
-    navigation.replace('Home' as any);
+    // TODO (Troy): when offline auth is implemented, complete the auth flow
+    // here (e.g. restore stored token/user and call useAuth().login(...)) so
+    // the Protected stack mounts naturally. Until then redirect to a route
+    // that exists in the unauthenticated stack.
+    navigation.replace('Login' as any);
   };
 
   // ── Reset PIN modal handlers ──────────────────────────────
