@@ -1,8 +1,10 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MainFrame } from '../components/MainFrame';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { SETTINGS_BIOMETRIC_KEY } from './ProfileScreen';
 
 const DEV_MODE = true;
 
@@ -21,6 +23,23 @@ export default function TicketDetailScreen() {
   const [errorMessage, setErrorMessage] = useState('');
 
   const pinRefs = useRef<(TextInput | null)[]>([null, null, null, null, null, null]);
+
+  // ── Load saved biometric preference ────────────────────────────────────────
+  // Reads the preference the user set in ProfileScreen → Settings so the
+  // correct method is pre-selected when the verification modal opens.
+  useEffect(() => {
+    const loadPreference = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(SETTINGS_BIOMETRIC_KEY);
+        if (saved === 'face' || saved === 'fingerprint') {
+          setSelectedMethod(saved);
+        }
+      } catch {
+        // Fall back to fingerprint default if read fails
+      }
+    };
+    loadPreference();
+  }, []);
 
   const task = {
     id: taskId,
@@ -201,76 +220,71 @@ export default function TicketDetailScreen() {
         </View>
       )}
 
-      {/* ── Photos — only when in progress ── */}
+      {/* ── Photos ── */}
       {taskStatus !== 'not_started' && (
         <View style={styles.card}>
           <View style={styles.cardRow}>
-            <Text style={styles.cardTitle}>Photo Submissions</Text>
+            <Text style={styles.cardTitle}>Photos</Text>
             <Text style={styles.photoCount}>{task.photosSubmitted}/{task.photosRequired}</Text>
           </View>
           <View style={styles.photoRow}>
-            {[...Array(task.photosRequired)].map((_, index) => (
-              <View key={index} style={[
-                styles.photoSlot,
-                index < task.photosSubmitted && styles.photoSlotDone
-              ]}>
+            {[...Array(task.photosRequired)].map((_, i) => (
+              <TouchableOpacity
+                key={i}
+                style={[styles.photoSlot, i < task.photosSubmitted && styles.photoSlotDone]}
+                onPress={handleTakePhoto}
+              >
                 <Ionicons
-                  name={index < task.photosSubmitted ? 'checkmark-circle' : 'camera'}
+                  name={i < task.photosSubmitted ? 'checkmark-circle' : 'camera'}
                   size={24}
-                  color={index < task.photosSubmitted ? '#22c55e' : '#6b7280'}
+                  color={i < task.photosSubmitted ? '#22c55e' : '#6b7280'}
                 />
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         </View>
       )}
 
-      {/* ── Action Buttons ── */}
+      {/* ── Actions ── */}
       <View style={styles.actions}>
         {taskStatus === 'not_started' && (
           <TouchableOpacity style={styles.btnPrimary} onPress={handleStartTask}>
-            <Ionicons name="play" size={20} color="white" />
+            <Ionicons name="play-circle" size={20} color="white" />
             <Text style={styles.btnText}>Start Task</Text>
           </TouchableOpacity>
         )}
-
         {taskStatus === 'in_progress' && (
           <>
-            <TouchableOpacity style={styles.btnPrimary} onPress={handleTakePhoto}>
-              <Ionicons name="camera" size={20} color="white" />
-              <Text style={styles.btnText}>Take Photo</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.btnOutline} onPress={() => navigation.navigate('UploadPhoto' as never, { taskId } as never)}>
-              <Ionicons name="cloud-upload-outline" size={20} color="#ff8c00" />
-              <Text style={styles.btnOutlineText}>Upload Photo</Text>
+            <TouchableOpacity
+              style={task.photosSubmitted >= task.photosRequired ? styles.btnSuccess : styles.btnOutline}
+              onPress={handleCompleteTask}
+              disabled={task.photosSubmitted < task.photosRequired}
+            >
+              <Ionicons name="checkmark-circle" size={20} color={task.photosSubmitted >= task.photosRequired ? 'white' : '#ff8c00'} />
+              <Text style={task.photosSubmitted >= task.photosRequired ? styles.btnText : styles.btnOutlineText}>
+                {task.photosSubmitted >= task.photosRequired ? 'Complete Task' : `Need ${task.photosRequired - task.photosSubmitted} more photo(s)`}
+              </Text>
             </TouchableOpacity>
           </>
-        )}
-
-        {taskStatus === 'ready_to_submit' && (
-          <TouchableOpacity style={styles.btnSuccess} onPress={handleCompleteTask}>
-            <Ionicons name="checkmark-circle" size={20} color="white" />
-            <Text style={styles.btnText}>Complete Task</Text>
-          </TouchableOpacity>
         )}
       </View>
 
       {/* ── Verification Modal ── */}
-      <Modal visible={showVerificationModal} transparent animationType="fade">
+      <Modal
+        visible={showVerificationModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeModal}
+      >
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-
-            <View style={styles.cardRow}>
-              <Text style={styles.modalTitle}>Task Verification</Text>
-              <TouchableOpacity onPress={closeModal}>
-                <Ionicons name="close" size={20} color="white" />
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.modalTitle}>Identity Verification</Text>
 
             {(verificationStep === 'initial' || verificationStep === 'biometric') && (
               <View style={styles.modalBody}>
                 <Text style={styles.modalText}>Verify your identity to start this task.</Text>
 
+                {/* Face ID / Fingerprint toggle */}
                 <View style={styles.methodRow}>
                   <TouchableOpacity
                     style={[styles.methodBtn, selectedMethod === 'face' && styles.methodBtnActive]}
@@ -288,6 +302,7 @@ export default function TicketDetailScreen() {
                   </TouchableOpacity>
                 </View>
 
+                {/* Scan button */}
                 <TouchableOpacity
                   style={[
                     styles.scanButton,
@@ -311,19 +326,23 @@ export default function TicketDetailScreen() {
                 {scanState === 'idle'     && <Text style={styles.hintText}>{selectedMethod === 'face' ? 'Tap to scan your face' : 'Tap to scan fingerprint'}</Text>}
                 {scanState === 'scanning' && <Text style={styles.hintText}>Scanning…</Text>}
 
+                {/* ── Failed state: retry + PIN fallback ──────────────────────
+                    "Use PIN instead" only appears after a scan fails — it is a
+                    fallback, not a first option. This matches the login biometric
+                    screen behaviour and prevents contractors bypassing biometrics. */}
                 {scanState === 'failed' && (
                   <>
                     <Text style={styles.errorText}>Scan failed — please try again.</Text>
                     <TouchableOpacity style={styles.btnPrimary} onPress={() => setScanState('idle')}>
                       <Text style={styles.btnText}>Retry</Text>
                     </TouchableOpacity>
+                    <TouchableOpacity style={styles.pinLink} onPress={() => setVerificationStep('pin')}>
+                      <Ionicons name="keypad-outline" size={16} color="#ff8c00" />
+                      <Text style={styles.pinLinkText}>Use PIN instead</Text>
+                    </TouchableOpacity>
                   </>
                 )}
 
-                <TouchableOpacity style={styles.pinLink} onPress={() => setVerificationStep('pin')}>
-                  <Ionicons name="keypad-outline" size={16} color="#ff8c00" />
-                  <Text style={styles.pinLinkText}>Use PIN instead</Text>
-                </TouchableOpacity>
               </View>
             )}
 

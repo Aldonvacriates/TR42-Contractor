@@ -1,9 +1,17 @@
 import { useEffect, useState } from "react";
-import { View, ActivityIndicator } from "react-native";
+import { TextInput, View, ActivityIndicator } from "react-native";
 import { LoadFonts } from "./utils/LoadFonts";
+
+// Dark translucent keyboard on iOS for every TextInput in the app
+(TextInput as any).defaultProps = {
+  ...((TextInput as any).defaultProps ?? {}),
+  keyboardAppearance: 'dark',
+};
+
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
 
 // ── Jonathan ──────────────────────────────────────
 import {Blank} from "./screens/Blank";
@@ -15,7 +23,9 @@ import {Chat} from "./screens/ChatScreen";
 import TicketsScreen from "./screens/TicketsScreen";
 import TicketDetailScreen from "./screens/TicketDetailScreen";
 import InspectionScreen from "./screens/InspectionScreen";
+import { InspectionAssistScreen } from "./screens/InspectionAssistScreen";
 import DriveTimeTrackerScreen from "./screens/DriveTimeTrackerScreen";
+import { SavedReportsScreen } from "./screens/SavedReportsScreen";
 
 // ── TROY — Auth screens ──────────────────────────────────────
 import LoginScreen           from "./screens/LoginScreen";
@@ -25,17 +35,20 @@ import PasswordResetScreen   from "./screens/PasswordResetScreen";
 import OfflinePinResetScreen from "./screens/OfflinePinResetScreen";
 
 // ── TROY — Profile screens ───────────────────────────────────
-import ProfileScreen from "./screens/ProfileScreen";
-import LicenseScreen from "./screens/LicenseScreen";
+import ProfileScreen     from "./screens/ProfileScreen";
+import LicenseScreen     from "./screens/LicenseScreen";
+import TaskHistoryScreen from "./screens/TaskHistoryScreen";
 
 export type RootStackParamList = {
-  // ── Jonathan — App screens ───────────────────────────────────
+  // ── Always visible ───────────────────────────────────────────
   SplashScreen:  undefined;
+
+  // ── Jonathan — App screens ───────────────────────────────────
   Home:          undefined;
   Blank:         undefined;
   // ── Charlie — App screens ───────────────────────────────────
   Contacts:      undefined;
-  Chat:          undefined;
+  Chat:          { name: string; contactId?: string };
   Tickets:       undefined;
   TicketDetail:  { taskId: number };
 
@@ -47,19 +60,30 @@ export type RootStackParamList = {
   // ── Troy — Auth screens ──────────────────────────────────────
   Login:           undefined;
   OfflineLogin:    undefined;
-  BiometricCheck:  undefined;
+
+  // BiometricCheck receives the pending token and user from LoginScreen.
+  // login() is NOT called until the biometric scan succeeds here, ensuring
+  // isAuthenticated never becomes true before identity is verified.
+  BiometricCheck: {
+    pendingToken: string;
+    pendingUser:  { id: number; username: string; role: string };
+  };
+
   PasswordReset:   undefined;
   OfflinePinReset: undefined;
 
   // ── Troy — Profile screens ───────────────────────────────────
   Profile:         undefined;
   LicenseDetails:  undefined;
+  TaskHistory:     undefined;
 
-  // ── Aldo — Inspection screen ──────────────────────────────────
-  Inspection:      undefined;
+  // ── Aldo — Inspection screen + AI assist + Drive Time ────────
+  Inspection:        { bypassGate?: boolean } | undefined;
+  InspectionAssist:  undefined;
+  DriveTimeTracker:  undefined;
 
-  // ── Aldo — Drive Time Tracker ────────────────────────────────
-  DriveTimeTracker: undefined;
+  // ── Aldo — Saved Reports ─────────────────────────────────────
+  SavedReports: undefined;
 
   // ── Charlie — Dashboard (placeholder until real screen is built) ──
   Dashboard:       undefined;
@@ -84,31 +108,40 @@ function RootNavigator() {
   }
 
   return (
-    <StackNavigator.Navigator screenOptions={screenConfig.window}>
+    <StackNavigator.Navigator
+      screenOptions={screenConfig.window}
+      initialRouteName={isAuthenticated ? 'Inspection' : 'SplashScreen'}
+    >
       {isAuthenticated ? (
         // ── Protected App screens ─────────────────────────────────────────
-        // First screen is Inspection — the daily gate. After passing (or skipping)
-        // it navigates to Dashboard. All other app screens follow.
+        // No SplashScreen here: once auth flips true the Auth stack unmounts
+        // and this stack mounts with Inspection as its initial route. Keeping
+        // Splash registered across both stacks caused React Navigation to
+        // fall back to it after the swap, where a stale closure in its
+        // useEffect would navigate the user back to Login.
         <>
           <StackNavigator.Screen name="Inspection"       component={InspectionScreen}       />
           <StackNavigator.Screen name="Dashboard"        component={HomeScreen}              />
           <StackNavigator.Screen name="Home"             component={HomeScreen}              />
-          <StackNavigator.Screen name="Blank"            component={Blank}                  />
-          <StackNavigator.Screen name="Contacts"         component={Contacts}               />
-          <StackNavigator.Screen name="Chat"             component={Chat}                   />
-          <StackNavigator.Screen name="Tickets"          component={TicketsScreen}          />
-          <StackNavigator.Screen name="TicketDetail"     component={TicketDetailScreen}     />
-          <StackNavigator.Screen name="Profile"          component={ProfileScreen}          />
-          <StackNavigator.Screen name="LicenseDetails"   component={LicenseScreen}          />
-          <StackNavigator.Screen name="DriveTimeTracker" component={DriveTimeTrackerScreen} />
-          {/* SplashScreen kept for Jonathan's direct nav references */}
-          <StackNavigator.Screen name="SplashScreen"     component={SplashScreen}           />
+          <StackNavigator.Screen name="Blank"            component={Blank}                   />
+          <StackNavigator.Screen name="Contacts"         component={Contacts}                />
+          <StackNavigator.Screen name="Chat"             component={Chat}                    />
+          <StackNavigator.Screen name="Tickets"          component={TicketsScreen}           />
+          <StackNavigator.Screen name="TicketDetail"     component={TicketDetailScreen}      />
+          <StackNavigator.Screen name="Profile"          component={ProfileScreen}           />
+          <StackNavigator.Screen name="LicenseDetails"   component={LicenseScreen}           />
+          <StackNavigator.Screen name="TaskHistory"      component={TaskHistoryScreen}       />
+          <StackNavigator.Screen name="InspectionAssist" component={InspectionAssistScreen}  />
+          <StackNavigator.Screen name="DriveTimeTracker" component={DriveTimeTrackerScreen}  />
+          <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />
         </>
       ) : (
         // ── Public Auth screens ───────────────────────────────────────────
-        // Login is the entry point. After a successful login() call the auth
-        // state flips and React Navigation auto-routes to Inspection above.
+        // Login is the entry point after Splash. After a successful login()
+        // call the auth state flips and React Navigation auto-routes to
+        // Inspection above.
         <>
+          <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}          />
           <StackNavigator.Screen name="Login"           component={LoginScreen}           />
           <StackNavigator.Screen name="OfflineLogin"    component={OfflineLoginScreen}    />
           <StackNavigator.Screen name="BiometricCheck"  component={BiometricScreen}       />
@@ -135,10 +168,12 @@ export default function App() {
   if (!externalFontsLoaded) return null;
 
   return (
-    <AuthProvider>
-      <NavigationContainer>
-        <RootNavigator />
-      </NavigationContainer>
-    </AuthProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <NavigationContainer>
+          <RootNavigator />
+        </NavigationContainer>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }

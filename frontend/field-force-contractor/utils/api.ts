@@ -4,7 +4,10 @@
 // and throws a typed ApiError on non-2xx responses.
 
 import { Platform } from 'react-native';
-import { getToken } from './secureStorage';
+import { getToken, deleteToken } from './secureStorage';
+
+let _onAuthFailure: (() => void) | null = null;
+export function registerAuthFailureHandler(cb: () => void) { _onAuthFailure = cb; }
 
 // ── Config ─────────────────────────────────────────────────────
 //
@@ -77,14 +80,24 @@ import { getToken } from './secureStorage';
 // Your LAN IP will change whenever you connect to a new network, so
 // expect to update this line when switching between home/office/etc.
 // ---------------------------------------------------
-const LAN_IP = '10.0.0.152';            // ← your machine's Wi-Fi LAN IP
+// ── Switch between local dev and deployed backend ─────────────
+//
+// After deploying to Render:
+//   1. Paste your Render URL into DEPLOYED_API_URL below
+//   2. Flip USE_DEPLOYED to true
+//   3. Everyone on the team hits the same live API
+//
+const USE_DEPLOYED     = true;
+const DEPLOYED_API_URL = 'https://tr42-contractor.onrender.com';
+
+const LAN_IP = '10.0.0.152';            // ← your machine's Wi-Fi LAN IP (local dev only)
 const PORT   = 5000;
 
-// Web uses localhost. Everything else (phone, emulator) uses the
-// LAN IP — the firewall rule on port 5000 covers all of them.
-export const API_BASE_URL = Platform.OS === 'web'
-  ? `http://localhost:${PORT}`
-  : `http://${LAN_IP}:${PORT}`;
+export const API_BASE_URL = USE_DEPLOYED
+  ? DEPLOYED_API_URL
+  : Platform.OS === 'web'
+    ? `http://localhost:${PORT}`
+    : `http://${LAN_IP}:${PORT}`;
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -113,6 +126,37 @@ export interface LoginResponse {
 
 // ── Core request helper ────────────────────────────────────────
 
+// Render's free tier spins down after ~15 min idle, and the first request back
+// takes 30–60s to cold-start. React Native's underlying fetch often aborts well
+// before that (≈10–30s depending on platform), which shows up to the user as
+// "Unable to connect" even though the server is just waking up. We set an
+// explicit 65s timeout so cold starts have enough time to resolve cleanly.
+const REQUEST_TIMEOUT_MS = 65_000;
+
+async function fetchWithTimeout(
+  url:       string,
+  options:   RequestInit,
+  timeoutMs: number = REQUEST_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Fire-and-forget wake-up ping. Call this from screens that care about
+ * latency (e.g. LoginScreen on mount) so the server starts warming up while
+ * the user is still reading/typing. Errors are swallowed — this is best-effort.
+ */
+export function pingServer(): void {
+  // Any hit on the domain triggers Render's wake-up, even a 404.
+  fetchWithTimeout(API_BASE_URL, { method: 'GET' }, 5_000).catch(() => {});
+}
+
 async function request<T>(
   path:         string,
   options:      RequestInit = {},
@@ -132,7 +176,7 @@ async function request<T>(
 
   let response: Response;
   try {
-    response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+    response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { ...options, headers });
   } catch {
     throw {
       status: 0,
@@ -148,6 +192,10 @@ async function request<T>(
   }
 
   if (!response.ok) {
+    if (response.status === 403) {
+      await deleteToken();
+      _onAuthFailure?.();
+    }
     const err = body as Partial<ApiError>;
     throw {
       status: response.status,
