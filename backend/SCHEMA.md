@@ -53,19 +53,19 @@ contractor
   updated_by        FK user.id     nullable
 
 vendors
-  id                PK, FK auth_users.id
+  id                PK, FK user.id
   company_name      varchar(360)   not null
   company_code      varchar(360)   not null
   start_date        date           not null
   end_date          date           nullable
-  primary_contact_name
-  company_email
-  company_phone
-  status
-  vendor_code
-  onboarding
-  compliance_status
-  description
+  primary_contact_name  varchar(360)   not null
+  company_email         varchar(360)   not null
+  company_phone         varchar(20)    not null
+  status                varchar(20)    not null
+  vendor_code       varchar(360)    not null
+  onboarding        varchar(360)    nullable
+  compliance_status varchar(360)    nullable
+  description       varchar(500)    not null
   created_at        datetime       not null
   updated_at        datetime       nullable
   created_by        FK user.id     not null
@@ -76,9 +76,9 @@ clients
   id                PK, FK user.id
   client_name       varchar(360)   not null
   client_code       varchar(360)   not null
-  primary_contact_name
-  contact_email
-  contact_phone
+  primary_contact_name  varchar(360)   not null
+  contact_email     varchar(360)   not null
+  contact_phone     varchar(20)    not null
   created_at        datetime       not null
   updated_at        datetime       nullable
   created_by        FK user.id     not null
@@ -96,29 +96,29 @@ work_orders
   assigned_at       datetime       nullable
   completed_at      datetime       nullable
   description       varchar(500)   not null
-  work_order_name
-  estimated_start_date
-  estimated_end_date
+  work_order_name   varchar(200)   not null
+  estimated_start_date  date       not null
+  estimated_end_date    date       not null
   current_status    varchar(360)   not null
 
   location          varchar(500)   not null
   location_type     varchar(360)   not null
-  latitude
-  longitude
+  latitude          float          nullable
+  longitude         float          nullable
 
   estimated_cost    float          not null
   estimated_duration float         not null
   priority          varchar(360)   not null
 
-  comments
-  well_id
-  service_type
-  estimated_quantity
-  units
-  is_recurring
-  recurrence_type
-  cancelled_at
-  cancellation_reason
+  comments          varchar(500)   nullable
+  well_id           int            nullable
+  service_type      varchar(360)   nullable
+  estimated_quantity  float        nullable
+  units             varchar(360)   nullable
+  is_recurring      bool           not null
+  recurrence_type   varchar(360)   nullable
+  cancelled_at      datetime       nullable
+  cancellation_reason varchar(500) nullable
   created_at        datetime       not null
   updated_at        datetime       nullable
   created_by        FK user.id     not null
@@ -130,8 +130,8 @@ work_orders
 tickets
   id                      PK int
   work_order_id           FK work_orders.id  not null
-  invoice_id
-  vendor_id               FK vendors.id      not null
+  invoice_id              int                nullable
+  vendor_id               FK vendor.id       not null
   description             varchar(500)       not null
   priority                varchar(360)       not null
   status                  varchar(360)       not null  -- to_do | in_progress | completed
@@ -153,7 +153,7 @@ tickets
   updated_at              datetime       nullable
   created_by              FK user.id     not null
   updated_by              FK user.id     nullable
-  additional_information
+  additional_information  varchar (500)  nullable
 
 
 ```
