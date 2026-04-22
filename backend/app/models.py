@@ -98,7 +98,7 @@ class Work_order(Base):
     estimated_end_date: Mapped[date] = mapped_column(Date, nullable=False)
     current_status: Mapped[str] = mapped_column(String(360), nullable=False)
 
-    location: Mapped[str] = mapped_column(String(500), nullable=False) #long and lat should be stored as string and parsed by frontend for mapping, clarify if this should be a separate table for multiple locations per work order
+    location: Mapped[str] = mapped_column(String(500), nullable=False)
     location_type: Mapped[str] = mapped_column(String(360), nullable=False) #there are types
     latitude: Mapped[float] = mapped_column(Float, nullable=True)
     longitude: Mapped[float] = mapped_column(Float, nullable=True)
@@ -138,10 +138,10 @@ class Ticket(Base):
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True)) #change to assigned_at
 
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
-    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True) #due_date
+    end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     contractor_start_location: Mapped[str] = mapped_column(String(500), nullable=True)
     contractor_end_location: Mapped[str] = mapped_column(String(500), nullable=True)
-    route: Mapped[str] = mapped_column(String(500), nullable=True) #route
+    route: Mapped[str] = mapped_column(String(500), nullable=True)
     
     due_date: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     estimated_duration: Mapped[float] = mapped_column(Float, nullable=True)
