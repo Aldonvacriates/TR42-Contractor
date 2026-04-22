@@ -2,8 +2,8 @@ from flask import Flask
 from flask_cors import CORS
 from .models import db
 from .extensions import ma
-from .blueprints.users import auth_users_bp
-from .blueprints.contractor import field_contractors_bp
+from .blueprints.auth_users import auth_users_bp
+from .blueprints.field_contractors import field_contractors_bp
 from .blueprints.tickets import tickets_bp
 from .blueprints.work_orders import work_orders_bp
 from .blueprints.inspections import inspections_bp

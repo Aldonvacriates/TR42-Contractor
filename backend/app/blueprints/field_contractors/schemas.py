@@ -15,8 +15,12 @@ class ContractorUpdateSchema(Schema):
 
 # class VendorUpdateContractorSchema(Schema):
 
-
+class ContractorRegisterSchema(ContractorSchema):
+    user_id = fields.Int(required=False)
+    created_by = fields.Int(required=False)
+    created_at = fields.DateTime(required=False)
 
 contractor_schema = ContractorSchema()
+contractor_register_schema = ContractorRegisterSchema()
 contractor_update_schema = ContractorUpdateSchema()
 # vendor_update_contractor_schema = VendorUpdateContractorSchema()

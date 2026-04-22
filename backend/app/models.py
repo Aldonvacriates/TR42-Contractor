@@ -37,9 +37,9 @@ class User(Base):
     address_id: Mapped[str] = mapped_column(String(500), nullable=False)
 
 
-    contractor = relationship("Contractor", uselist=False, back_populates="user", foreign_keys="Contractor.id")
-    vendor = relationship("Vendor", uselist=False, back_populates="user", foreign_keys="Vendor.id")
-    client = relationship("Client", uselist=False, back_populates="user", foreign_keys="Client.id")
+    contractor = relationship("Contractor", uselist=False, back_populates="user", foreign_keys="Contractor.user_id")
+    # vendor = relationship("Vendor", uselist=False, back_populates="user", foreign_keys="Vendor.id")
+    # client = relationship("Client", uselist=False, back_populates="user", foreign_keys="Client.id")
 
 class Contractor(Base):
     __tablename__ = 'contractor'
@@ -71,7 +71,7 @@ class Contractor(Base):
     created_by: Mapped[int] = mapped_column(ForeignKey('user.id'), nullable=False)
     updated_by: Mapped[int] = mapped_column(ForeignKey('user.id'), nullable=True)
 
-    user = relationship("User", back_populates="contractor", foreign_keys="User.id")
+    user = relationship("User", back_populates="contractor", foreign_keys=[user_id])
 
         # the five commented fields below are moved to user.
     # first_name: Mapped[str] = mapped_column(String(360), nullable=False)
@@ -303,7 +303,7 @@ class Vendor(Base):
     address_id: Mapped[str] = mapped_column(String(500), nullable=False)
 
 
-    user = relationship("User", back_populates="vendor", foreign_keys=[id])
+    #user = relationship("User", back_populates="vendor", foreign_keys=[id])
 
 class Client(Base):
     __tablename__ = 'client'
@@ -321,6 +321,6 @@ class Client(Base):
     updated_by: Mapped[int] = mapped_column(ForeignKey('user.id'), nullable=True)    
     address_id: Mapped[str] = mapped_column(String(500), nullable=False)
 
-    user = relationship("User", back_populates="client", foreign_keys=[id])
+    #user = relationship("User", back_populates="client", foreign_keys=[id])
 
 

@@ -37,7 +37,7 @@ def login():
     else:
         user = db.session.query(User).where(User.username == identifier).first()
 
-    if user and check_password_hash(user.password_hash, data['password_hash']):
+    if user and check_password_hash(user.password_hash, data['password']):
         token = encode_token(user.id, user.user_type)
         return jsonify({
             'message': 'Successfully Logged in',
@@ -52,27 +52,7 @@ def login():
     }), 401
 
 
-# Register/Create Users - for testing
-@auth_users_bp.route('', methods=['POST'])
-def create_user():
-
-    try:
-        data = auth_user_schema.load(request.json)
-    except ValidationError as e:
-        return jsonify(e.messages), 400
-    
-    data['password_hash']= generate_password_hash(data['password_hash'])
-
-    user = db.session.query(User).where(User.username == data['username']).first()
-
-    if user: 
-        return jsonify({'error': 'Username already taken'}), 400
-    
-    new_user = User(**data)
-    db.session.add(new_user)
-    db.session.commit()
-
-    return auth_user_schema.jsonify(new_user), 201
+# Register/Create User for new contractor is in contractor routes - for testing
 
 
 #Update password route (this one is if they already know existing password)

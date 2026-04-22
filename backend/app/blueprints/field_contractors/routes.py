@@ -1,7 +1,7 @@
 from flask import request, jsonify
 from app.models import User, Contractor, Ticket, db
-from .schemas import contractor_schema, contractor_update_schema, vendor_update_contractor_schema
-from ..auth_users.schemas import auth_user_update_schema, auth_user_create_schema
+from .schemas import contractor_register_schema, contractor_schema, contractor_update_schema
+from ..auth_users.schemas import auth_user_update_schema, user_create_schema
 from ..tickets.schemas import tickets_schema
 from marshmallow import ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -21,8 +21,8 @@ def register_contractor():
 
     # Validate and deserialize input
     try:
-        user_data = auth_user_create_schema.load(json_data.get('user', {}))
-        contractor_data = contractor_schema.load(json_data.get('contractor', {}))
+        user_data = user_create_schema.load(json_data.get('user', {}))
+        contractor_data = contractor_register_schema.load(json_data.get('contractor', {}))
     except ValidationError as e:
         return jsonify(e.messages), 400
 
@@ -31,13 +31,29 @@ def register_contractor():
     if existing_user:
         return jsonify({'error': 'User with this username already exists'}), 400
 
+    password_hash = generate_password_hash(user_data['password'])
+
     # Create new user
     new_user = User(
-        email=user_data['email'],
         username=user_data['username'],
-        password_hash=generate_password_hash(user_data['password_hash']),
+        email=user_data['email'],
+        password_hash=password_hash,
         user_type='contractor',
-        created_by=request.user_id
+        token_version=0,
+        is_active=True,
+        is_admin=False,
+        profile_photo=user_data.get('profile_photo'),
+        created_by=request.user_id,
+        created_at=datetime.now(timezone.utc),
+        first_name=user_data.get('first_name'),
+        last_name=user_data.get('last_name'),
+        middle_name=user_data.get('middle_name'),
+        contact_number=user_data.get('contact_number'),
+        alternate_number=user_data.get('alternate_number'),
+        date_of_birth=user_data.get('date_of_birth'),
+        ssn_last_four=user_data.get('ssn_last_four'),
+        address_id="1", # place holder for this testing route
+
     )
     db.session.add(new_user)
     db.session.flush()  # Get the ID of the newly created user
@@ -74,7 +90,7 @@ def register_contractor():
 
     return jsonify({
         'message': 'Contractor registered successfully',
-        'user': auth_user_update_schema.dump(new_user),
+        'user': user_create_schema.dump(new_user),
         'contractor': contractor_schema.dump(new_contractor)
     }), 201
 
