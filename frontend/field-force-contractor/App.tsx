@@ -19,6 +19,7 @@ import HomeScreen from "./screens/HomeScreen"
 import {screenConfig} from "./constants/ScreenConfig";
 import { Contacts } from "./screens/ContactScreen";
 import { SplashScreen } from "./screens/SplashScreen";
+import { AppContext } from "./contexts/AppContext";
 import {Chat} from "./screens/ChatScreen";
 import TicketsScreen from "./screens/TicketsScreen";
 import TicketDetailScreen from "./screens/TicketDetailScreen";
@@ -112,6 +113,7 @@ function RootNavigator() {
       screenOptions={screenConfig.window}
       
     >
+       <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}          />
       {isAuthenticated ? (
         // ── Protected App screens ─────────────────────────────────────────
         // No SplashScreen here: once auth flips true the Auth stack unmounts
@@ -141,7 +143,7 @@ function RootNavigator() {
         // call the auth state flips and React Navigation auto-routes to
         // Inspection above.
         <>
-          <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}          />
+         
           <StackNavigator.Screen name="Login"           component={LoginScreen}           />
           <StackNavigator.Screen name="OfflineLogin"    component={OfflineLoginScreen}    />
           <StackNavigator.Screen name="BiometricCheck"  component={BiometricScreen}       />
@@ -156,7 +158,7 @@ function RootNavigator() {
 // ── App root ───────────────────────────────────────────────────────────────
 export default function App() {
   const [externalFontsLoaded, setExternalFontsLoaded] = useState(false);
-
+  const [mount,setMounted] = useState(false);
   useEffect(() => {
     const load = async () => {
       const isLoaded = await LoadFonts();
@@ -168,12 +170,14 @@ export default function App() {
   if (!externalFontsLoaded) return null;
 
   return (
-    <ThemeProvider>
-      <AuthProvider>
-        <NavigationContainer>
-          <RootNavigator />
-        </NavigationContainer>
-      </AuthProvider>
-    </ThemeProvider>
+    <AppContext.Provider value={[mount,setMounted]}>
+      <ThemeProvider>
+        <AuthProvider>
+          <NavigationContainer>
+            <RootNavigator />
+          </NavigationContainer>
+        </AuthProvider>
+      </ThemeProvider>
+    </AppContext.Provider>
   );
 }

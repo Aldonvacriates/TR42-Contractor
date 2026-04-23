@@ -16,7 +16,7 @@
 // multiple times before navigation completes, only one navigation happens.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { FC, useEffect, useRef } from "react"
+import { FC, useEffect, useRef,useContext } from "react"
 import { useNavigation }          from "@react-navigation/native"
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList }     from "@/App"
@@ -25,11 +25,12 @@ import { View, Image }            from "react-native"
 import { Styles }                 from "@/constants/Styles";
 import { Assets }                 from "@/constants/Assets";
 import { useAuth }                from "@/contexts/AuthContext";
+import { AppContext }             from "@/contexts/AppContext";
 
 export const SplashScreen: FC = () => {
   const nav  = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { isLoading,isAuthenticated } = useAuth();
-
+  const [mount,setMounted] = useContext(AppContext);
   // Prevents multiple navigations if the effect fires more than once
   const hasNavigated = useRef(false);
 
@@ -44,8 +45,9 @@ export const SplashScreen: FC = () => {
   const timer = setTimeout(() => {
     hasNavigated.current = true;
       if(isLoading === false){
+          setMounted(true);
       if (isAuthenticated) {
-        nav.replace('Inspection');
+        nav.replace('Home');
       } else {
         nav.replace('Login');
       }

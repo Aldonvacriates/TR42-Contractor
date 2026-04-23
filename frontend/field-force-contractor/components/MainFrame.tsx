@@ -27,7 +27,7 @@
 // inside MainFrame's centered ScrollView.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { FC, ReactNode }  from 'react';
+import { FC, ReactNode,useEffect,useContext }  from 'react';
 import {
   View,
   Text,
@@ -38,13 +38,16 @@ import {
 } from 'react-native';
 import { Ionicons }       from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
-
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList }     from "@/App"
 import { Styles }              from '@/constants/Styles';
 import { Assets }              from '@/constants/Assets';
 import { colors, spacing, fontSize, fonts } from '@/constants/theme';
 import { Header, HeaderVariant } from '@/components/Header';
 import { Menu, MenuOptions }   from '@/components/Menu';
 import { Menus }               from '@/constants/Menus';
+import { AppContext } from '@/contexts/AppContext';
+
 
 // ── SubHeader ─────────────────────────────────────────────────────────────────
 
@@ -112,7 +115,17 @@ type Props = {
 export const MainFrame: FC<Props> = (props) => {
   const route    = useRoute();
   const pageName = route.name;
+  const [mount] = useContext(AppContext);
+ type Nav = NativeStackNavigationProp<RootStackParamList>;
 
+  const navigator = useNavigation<Nav>();
+
+ useEffect(() =>{
+  
+   (!mount) && navigator.navigate("SplashScreen")
+
+
+ },[])
   const renderHeaderMenu: MenuOptions =
     props.strip === 'menus' || props.strip === 'all'
       ? ['none', []]
