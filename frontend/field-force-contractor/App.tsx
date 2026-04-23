@@ -110,10 +110,15 @@ function RootNavigator() {
   return (
     <StackNavigator.Navigator
       screenOptions={screenConfig.window}
+<<<<<<< HEAD
       initialRouteName={'SplashScreen'}
      
     >
         <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}          />
+=======
+      initialRouteName={isAuthenticated ? 'Inspection' : 'SplashScreen'}
+    >
+>>>>>>> parent of e2ec07c (updated chat to include date markers in chat que)
       {isAuthenticated ? (
         // ── Protected App screens ─────────────────────────────────────────
         // No SplashScreen here: once auth flips true the Auth stack unmounts
@@ -136,7 +141,10 @@ function RootNavigator() {
           <StackNavigator.Screen name="InspectionAssist" component={InspectionAssistScreen}  />
           <StackNavigator.Screen name="DriveTimeTracker" component={DriveTimeTrackerScreen}  />
           <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />
+<<<<<<< HEAD
          
+=======
+>>>>>>> parent of e2ec07c (updated chat to include date markers in chat que)
         </>
       ) : (
         // ── Public Auth screens ───────────────────────────────────────────
@@ -144,13 +152,16 @@ function RootNavigator() {
         // call the auth state flips and React Navigation auto-routes to
         // Inspection above.
         <>
-         
+          <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}          />
           <StackNavigator.Screen name="Login"           component={LoginScreen}           />
           <StackNavigator.Screen name="OfflineLogin"    component={OfflineLoginScreen}    />
           <StackNavigator.Screen name="BiometricCheck"  component={BiometricScreen}       />
           <StackNavigator.Screen name="PasswordReset"   component={PasswordResetScreen}   />
           <StackNavigator.Screen name="OfflinePinReset" component={OfflinePinResetScreen} />
+<<<<<<< HEAD
          
+=======
+>>>>>>> parent of e2ec07c (updated chat to include date markers in chat que)
         </>
       )}
     </StackNavigator.Navigator>

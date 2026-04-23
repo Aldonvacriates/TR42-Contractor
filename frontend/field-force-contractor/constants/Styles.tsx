@@ -143,8 +143,7 @@ export const Styles = {
    messageText:{fontFamily:DefaultFont,color:DefaultColor,fontSize:16,marginLeft:15,marginRight:15, justifyContent:"center",textAlign:"center"},
    timeText:{fontFamily:DefaultFont,color:DefaultColor,fontSize:12},
    dateText:{fontFamily:DefaultFont,color:DefaultColor,fontSize:12, marginLeft:15, marginRight:15,textAlign:"center"},
-   chatIcon:{width:35,height:35,marginRight:5,marginLeft:5},
-   dateMarkerText:{fontFamily:DefaultFont,color:DefaultColor,fontSize:15,width:"100%", textAlign:"center"}
+   chatIcon:{width:35,height:35,marginRight:5,marginLeft:5}
 
   }),
   ProfileIcon: StyleSheet.create({
