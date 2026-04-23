@@ -10,7 +10,6 @@ class TestTickets:
             'start_time': '2026-01-01T08:00:00Z',
             'contractor_start_location': '123 Test St',
         }, headers={'Authorization': f'Bearer {auth_token}'})
-        print(response.get_json())
         assert response.status_code == 200
         data = response.get_json()
         assert data['status'] == 'in_progress'

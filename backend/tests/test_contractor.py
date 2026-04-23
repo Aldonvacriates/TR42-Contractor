@@ -1,4 +1,4 @@
-from datetime import datetime
+
 
 class TestCreateContractor:
     def test_create_contractor(self, client, auth_token_vendor):
@@ -70,5 +70,4 @@ class TestCreateContractor:
             }
         }, headers={'Authorization': f'Bearer {auth_token_vendor}'}
         )
-        print(resp.get_json())
         assert resp.status_code == 400
