@@ -4,7 +4,7 @@ import pytest
 os.environ.setdefault('SECRET_KEY', 'test-secret-key-for-pytest')
 
 from app import create_app
-from app.models import db as _db, User, Contractor, Ticket
+from app.models import db as _db, AuthUser, Contractor, Ticket
 from werkzeug.security import generate_password_hash
 from datetime import date, datetime
 
@@ -33,7 +33,7 @@ def client(app):
 
 @pytest.fixture
 def seed_user(db):
-    user = User(
+    authuser = AuthUser(
         username='testuser',
         email='test@test.com',
         password_hash=generate_password_hash('123456'),
@@ -49,13 +49,13 @@ def seed_user(db):
         date_of_birth=date(1990, 1, 1),
         address_id='1',
     )
-    db.session.add(user)
+    db.session.add(authuser)
     db.session.commit()
-    return user
+    return authuser
 
 @pytest.fixture
 def seed_vendor_user(db):
-    user = User(
+    authuser = AuthUser(
         username='testvendor',
         email='vendor@test.com',
         password_hash=generate_password_hash('123456'),
@@ -71,9 +71,9 @@ def seed_vendor_user(db):
         date_of_birth=date(1990, 1, 1),
         address_id='1',
     )
-    db.session.add(user)
+    db.session.add(authuser)
     db.session.commit()
-    return user
+    return authuser
 
 
 @pytest.fixture
@@ -141,7 +141,7 @@ def seed_ticket(db, seed_contractor):
         anomaly_flag=False,
          
         created_at=datetime.now(),
-        created_by=seed_contractor.user_id,
+        created_by=seed_contractor.authuser_id,
         
 
     )
@@ -174,8 +174,8 @@ def seed_ticket_inProgress(db, seed_contractor):
 
         created_at=datetime.now(),
         updated_at=datetime.now(),
-        created_by=seed_contractor.user_id,
-        updated_by=seed_contractor.user_id
+        created_by=seed_contractor.authuser_id,
+        updated_by=seed_contractor.authuser_id
 
 
     )

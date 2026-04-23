@@ -1,14 +1,14 @@
 from app.extensions import ma
-from app.models import User
+from app.models import AuthUser
 from marshmallow import fields, Schema
 
 class AuthUserSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
-        model = User
+        model = AuthUser
         load_only = ("password_hash",)
         include_fk = True
 
-class UserCreateSchema(Schema):
+class AuthUserCreateSchema(Schema):
     username = fields.Str(required=True)
     email = fields.Email(required=True)
     password = fields.Str(required=True, load_only=True)
@@ -17,7 +17,7 @@ class UserCreateSchema(Schema):
     middle_name = fields.Str(required=False)
     profile_photo = fields.Str(required=False)
     contact_number = fields.Str(required=True)
-    alternative_contact_number = fields.Str(required=False)
+    alternate_number = fields.Str(required=False)
     date_of_birth = fields.Date(required=True)
     ssn_last_four = fields.Str(required=True)
 
@@ -48,7 +48,7 @@ class OfflinePinSchema(Schema):
 
 
 auth_user_schema = AuthUserSchema()
-user_create_schema = UserCreateSchema()
+auth_user_create_schema = AuthUserCreateSchema()
 login_schema = LoginSchema()
 auth_user_update_schema = AuthUserUpdateSchema()
 

@@ -1,5 +1,5 @@
 from flask import request, jsonify
-from app.models import Ticket, db
+from app.models import Ticket, Contractor, db
 from .schemas import tickets_schema, ticket_schema, ticket_update_schema
 from marshmallow import ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -28,7 +28,14 @@ def update_ticket(ticket_id):
     if not json_data:
         return jsonify({'error': 'No input data provided'}), 400
     
-    ticket = db.session.query(Ticket).filter(Ticket.id == ticket_id, Ticket.assigned_contractor == request.user_id).first()
+    user_id = request.user_id
+    
+    try: 
+        contractor = db.session.query(Contractor).filter(Contractor.user_id == user_id).first()
+        ticket = db.session.query(Ticket).filter(Ticket.id == ticket_id, Ticket.assigned_contractor == contractor.user_id).first()
+    except Exception as e:
+        return jsonify({'error': 'Error occurred while fetching data'}), 500
+
     if not ticket:
         return jsonify({'error': 'Ticket not found'}), 404
     

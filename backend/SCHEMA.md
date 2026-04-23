@@ -5,7 +5,7 @@ Source of truth: `backend/app/models.py`. Table names are snake_case. All FKs us
 ## Auth & People
 
 ```
-user
+authuser
   id                PK int
   email             varchar(360)   unique, not null
   username          varchar(360)   unique, not null
@@ -17,8 +17,8 @@ user
   profile_photo     varchar(500)   nullable
   created_at        timestamptz    not null
   updated_at        timestamptz    nullable
-  created_by        FK users.id    not null
-  updated_by        FK users.id    nullable
+  created_by        FK authuser.id    not null
+  updated_by        FK authuser.id    nullable
   first_name        varchar(360)   not null
   last_name         varchar(360)   not null
   middle_name       varchar(360)   nullable
@@ -31,7 +31,7 @@ user
 contractor
   id                PK
   employee_number   varchar(20)    not null
-  user_id           FK user.id     not null
+  user_id           FK authuser.id     not null
   role              varchar(360)   not null
   status            varchar(20)    not null
   tickets_completed int            not null
@@ -49,11 +49,11 @@ contractor
   offline_pin       varchar(10)    nullable
   created_at        datetime       not null
   updated_at        datetime       nullable
-  created_by        FK user.id     not null
-  updated_by        FK user.id     nullable
+  created_by        FK authuser.id     not null
+  updated_by        FK authuser.id     nullable
 
 vendors
-  id                PK, FK user.id
+  id                PK, FK authuser.id
   company_name      varchar(360)   not null
   company_code      varchar(360)   not null
   start_date        date           not null
@@ -68,12 +68,12 @@ vendors
   description       varchar(500)    not null
   created_at        datetime       not null
   updated_at        datetime       nullable
-  created_by        FK user.id     not null
-  updated_by        FK user.id     nullable
+  created_by        FK authuser.id     not null
+  updated_by        FK authuser.id     nullable
   address_id        varchar(500)   not null
 
 clients
-  id                PK, FK user.id
+  id                PK, FK authuser.id
   client_name       varchar(360)   not null
   client_code       varchar(360)   not null
   primary_contact_name  varchar(360)   not null
@@ -81,8 +81,8 @@ clients
   contact_phone     varchar(20)    not null
   created_at        datetime       not null
   updated_at        datetime       nullable
-  created_by        FK user.id     not null
-  updated_by        FK user.id     nullable
+  created_by        FK authuser.id     not null
+  updated_by        FK authuser.id     nullable
   address_id        varchar(500)   not null
 ```
 
@@ -121,21 +121,21 @@ work_orders
   cancellation_reason varchar(500) nullable
   created_at        datetime       not null
   updated_at        datetime       nullable
-  created_by        FK user.id     not null
-  updated_by        FK user.id     nullable
+  created_by        FK authuser.id     not null
+  updated_by        FK authuser.id     nullable
   
 
   
 
 tickets
   id                      PK int
-  work_order_id           FK work_orders.id  not null
+  work_order_id           FK work_order.id  not null
   invoice_id              int                nullable
   vendor_id               FK vendor.id       not null
   description             varchar(500)       not null
   priority                varchar(360)       not null
   status                  varchar(360)       not null  -- to_do | in_progress | completed
-  assigned_contractor     FK contractors.id
+  assigned_contractor     FK contractor.id
   assigned_at             timestamptz
   start_time              timestamptz        nullable
   end_time                timestamptz        nullable
@@ -151,8 +151,8 @@ tickets
 
   created_at              datetime       not null
   updated_at              datetime       nullable
-  created_by              FK user.id     not null
-  updated_by              FK user.id     nullable
+  created_by              FK authuser.id     not null
+  updated_by              FK authuser.id     nullable
   additional_information  varchar (500)  nullable
 
 
@@ -183,7 +183,7 @@ inspection_items
 inspections
   id                PK int
   template_id       FK inspection_templates.id  not null
-  contractor_id     FK contractors.id           not null
+  contractor_id     FK contractor.id           not null
   status            varchar(20)    not null    -- pending | passed | failed | skipped
   no_issues_found   bool           default false
   skipped           bool           default false
@@ -204,7 +204,7 @@ inspection_results
 ```
 duty_sessions
   id                PK int
-  contractor_id     FK contractors.id   not null
+  contractor_id     FK contractor.id   not null
   current_status    varchar(20)    not null   -- driving | on_duty | off_duty | sleeper_berth
   session_date      date           not null
   started_at        timestamptz    not null
@@ -228,7 +228,7 @@ duty_logs
 ```
 ai_inspection_reports
   id                    PK int
-  contractor_id         FK contractors.id       not null (indexed)
+  contractor_id         FK contractor.id       not null (indexed)
   inspection_id         FK inspections.id       nullable (indexed)   -- optional link to a formal inspection
   title                 varchar(300)   not null
   priority              varchar(20)    not null   -- low | medium | high

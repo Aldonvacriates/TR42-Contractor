@@ -13,8 +13,6 @@ class ContractorSchema(ma.SQLAlchemyAutoSchema):
 class ContractorUpdateSchema(Schema):
     offline_pin = fields.Str(required=False) #this is for contractor to set or update their offline pin, which will be used for biometric authentication fallback
 
-# class VendorUpdateContractorSchema(Schema):
-
 class ContractorRegisterSchema(ContractorSchema):
     user_id = fields.Int(required=False)
     created_by = fields.Int(required=False)
@@ -23,4 +21,3 @@ class ContractorRegisterSchema(ContractorSchema):
 contractor_schema = ContractorSchema()
 contractor_register_schema = ContractorRegisterSchema()
 contractor_update_schema = ContractorUpdateSchema()
-# vendor_update_contractor_schema = VendorUpdateContractorSchema()

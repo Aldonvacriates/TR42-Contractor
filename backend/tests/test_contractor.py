@@ -3,7 +3,7 @@ from datetime import datetime
 class TestCreateContractor:
     def test_create_contractor(self, client, auth_token_vendor):
         resp = client.post('/contractors/register', json={
-            "user": {
+            "authuser": {
                 'username': 'newuser',
                 'email': 'new@test.com',
                 'password': 'securepass',
@@ -36,11 +36,11 @@ class TestCreateContractor:
         assert resp.status_code == 201
         data = resp.get_json()
         assert data['message'] == 'Contractor registered successfully'
-        assert data['user']['username'] == 'newuser'
+        assert data['authuser']['username'] == 'newuser'
     
     def test_duplicate_contractor(self, client, seed_contractor, auth_token_vendor):
         resp = client.post('/contractors/register', json={
-            "user": {
+            "authuser": {
                 'username': 'testuser',
                 'email': 'other@test.com',
                 'password': 'securepass',

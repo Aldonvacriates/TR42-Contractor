@@ -1,5 +1,5 @@
 from flask import request, jsonify
-from app.models import User, Contractor, db
+from app.models import AuthUser, Contractor, db
 from .schemas import auth_user_schema, login_schema, auth_user_update_password_schema, offline_pin_schema
 from marshmallow import ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -33,9 +33,9 @@ def login():
     # Presence of '@' is a strong enough signal that the contractor typed an
     # email. Both columns are unique so only one lookup is needed per request.
     if '@' in identifier:
-        user = db.session.query(User).where(User.email == identifier).first()
+        user = db.session.query(AuthUser).where(AuthUser.email == identifier).first()
     else:
-        user = db.session.query(User).where(User.username == identifier).first()
+        user = db.session.query(AuthUser).where(AuthUser.username == identifier).first()
 
     if user and check_password_hash(user.password_hash, data['password']):
         token = encode_token(user.id, user.user_type)
@@ -52,7 +52,7 @@ def login():
     }), 401
 
 
-# Register/Create User for new contractor is in contractor routes - for testing
+# Register/Create AuthUser for new contractor is in contractor routes - for testing
 
 
 #Update password route (this one is if they already know existing password)
@@ -70,7 +70,7 @@ def update_password():
     try: 
         #user_id from token
         user_id = request.user_id
-        user = db.session.get(User, user_id)
+        user = db.session.get(AuthUser, user_id)
 
         if user and check_password_hash(user.password_hash, current_password):
             user.password_hash = generate_password_hash(new_password)
