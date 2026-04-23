@@ -133,10 +133,10 @@ export const MainFrame: FC<Props> = (props) => {
   
     if(!isLoading){
       const noAuthRequired = publicPages.some(item => item.name === pageName)
-      if(noAuthRequired){
+     
           
          if(!isAuthenticated && !noAuthRequired) navigator.replace("Login")
-      }
+      
   }
 
 
