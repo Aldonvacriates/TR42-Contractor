@@ -150,7 +150,7 @@ export const Chat:FC = (props) =>{
                 return(msgs);
 
     }
-    console.log(reverseStack);
+   
     return(<>
     <View style={Styles.Chat.screen}>
     <MainFrame headerMenu={["Menu2",[name]]}>
