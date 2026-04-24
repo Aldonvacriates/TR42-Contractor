@@ -8,7 +8,7 @@
     "scheme": "fieldforcecontractor",
     "userInterfaceStyle": "automatic",
     "updates": {
-      "enabled": false,
+      "enabled": true,
       "checkAutomatically": "NEVER"
     },
     "newArchEnabled": true,
