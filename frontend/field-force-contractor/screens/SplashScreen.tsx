@@ -48,13 +48,23 @@ export const SplashScreen: FC = () => {
     }
     if(devMode === false){
       if (isAuthenticated) {
-        nav.replace('Home');
+        
+        nav.replace('BiometricCheck',{
+          pendingToken: 'dev-token',
+          pendingUser:  { id: 0, username: "DevMode", role: 'contractor' },
+          onSuccess:{screen:"Home"}
+        });
       } else {
         nav.replace('Login');
       }
     }
     else{
-      nav.replace("Home");
+       nav.replace('BiometricCheck',{
+          pendingToken: 'dev-token',
+          pendingUser:  { id: 0, username: "DevMode", role: 'contractor' },
+          onSuccess:{screen:"Home"}
+        });
+     
     }
   
  
