@@ -65,7 +65,7 @@ const fieldConfig = FIELD_CONFIG[LOGIN_FIELD];
 //  true  = any non-empty username + password (6+ chars) succeeds immediately.
 //  Set to false when the backend is ready.
 // ─────────────────────────────────────────────────────────────────────────────
-const DEV_MODE = false;
+const DEV_MODE = true;
 
 const isValidEmail = (value: string) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -158,6 +158,7 @@ export default function LoginScreen() {
         navigation.navigate('BiometricCheck', {
           pendingToken: 'dev-token',
           pendingUser:  { id: 0, username: identifier.trim(), role: 'contractor' },
+          onSuccess:{screen:"Home"}
         });
         return;
       }
@@ -171,6 +172,7 @@ export default function LoginScreen() {
       navigation.navigate('BiometricCheck', {
         pendingToken: res.token,
         pendingUser:  res.user,
+        onSuccess:{screen:"Home"}
       });
 
     } catch (err) {

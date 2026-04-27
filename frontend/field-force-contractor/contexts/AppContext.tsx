@@ -8,7 +8,7 @@ export const  AppContext = createContext<any>(null)
 export const AppProvider = ({children} : {children:ReactNode}) =>{
    const [mount,setMounted] = useState(false);
    const [reverseStack,setReverseStack] = useState(false);
-   const [devMode,setDevMode] = useState(true);
+   const [devMode,setDevMode] = useState(false);
   
     return(
 
