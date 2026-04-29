@@ -84,9 +84,12 @@ class Work_order(Base):
     
     assigned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    closed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    halted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     description: Mapped[str] = mapped_column(String(500), nullable=False)
     
-    work_order_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    work_order_code: Mapped[int] = mapped_column(Integer, nullable=False)
     estimated_start_date: Mapped[date] = mapped_column(Date, nullable=False)
     estimated_end_date: Mapped[date] = mapped_column(Date, nullable=False)
     current_status: Mapped[str] = mapped_column(String(360), nullable=False)
@@ -108,6 +111,7 @@ class Work_order(Base):
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     recurrence_type: Mapped[str] = mapped_column(String(360), nullable=True)
     cancelled_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by: Mapped[int] = mapped_column(ForeignKey('authuser.id'), nullable=True)
     cancellation_reason: Mapped[str] = mapped_column(String(500), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -132,6 +136,8 @@ class Ticket(Base):
 
     start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     end_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    approved_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    rejected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     contractor_start_location: Mapped[str] = mapped_column(String(500), nullable=True)
     contractor_end_location: Mapped[str] = mapped_column(String(500), nullable=True)
     route: Mapped[str] = mapped_column(String(500), nullable=True)
@@ -327,8 +333,10 @@ class Client(Base):
     client_name: Mapped[str] = mapped_column(String(360), nullable=False)
     client_code: Mapped[str] = mapped_column(String(360), nullable=False)
     primary_contact_name: Mapped[str] = mapped_column(String(360), nullable=False)
-    contact_email: Mapped[str] = mapped_column(String(360), nullable=False)
-    contact_phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    company_email: Mapped[str] = mapped_column(String(360), nullable=False)
+    company_phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    company_web_address: Mapped[str] = mapped_column(String(360), nullable=True)
+    approved_domain: Mapped[str] = mapped_column(String(360), nullable=True)
     
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.now(timezone.utc),   nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
