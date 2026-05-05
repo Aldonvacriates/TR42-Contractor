@@ -12,27 +12,27 @@
 // BiometricCheck, which calls login() only after a successful scan.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  StatusBar,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useState } from 'react';
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
-import { MainFrame }          from '../components/MainFrame';
 import { RootStackParamList } from '@/App';
-import { colors, spacing, radius, fontSize, fonts } from '../constants/theme';
-import { api, LoginResponse, ApiError } from '../utils/api';
+import { MainFrame } from '../components/MainFrame';
+import { colors, fonts, fontSize, radius, spacing } from '../constants/theme';
+import { api, ApiError, LoginResponse } from '../utils/api';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -65,7 +65,7 @@ const fieldConfig = FIELD_CONFIG[LOGIN_FIELD];
 //  true  = any non-empty username + password (6+ chars) succeeds immediately.
 //  Set to false when the backend is ready.
 // ─────────────────────────────────────────────────────────────────────────────
-const DEV_MODE = true;
+const DEV_MODE = false;
 
 const isValidEmail = (value: string) => {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
