@@ -20,7 +20,7 @@ def ensure_utc(dt):
 #contractor can update status, add notes.
 #any anomaly flags or updates will be sent to vendor and client to view
 
-@tickets_bp.route('/<int:ticket_id>', methods=['PUT'])
+@tickets_bp.route('/<ticket_id>', methods=['PUT'])
 @token_required
 def update_ticket(ticket_id):
 
