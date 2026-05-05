@@ -20,15 +20,18 @@ Threat-model coverage:
       separately for anomaly scoring.
 
 Idempotency / offline retry:
-    Not currently supported on the Supabase schema. Proposal sent to Daniel
-    to add submission_uuid + content_hash columns. Until then, retries from
-    the mobile offline queue may produce duplicate rows.
+    Mobile app generates a submission_uuid at capture time. We upsert keyed
+    on that UUID so retries from a flaky network collapse onto the same row
+    instead of inserting a duplicate. content_hash (sha256 of the sanitised
+    bytes) is stored for app-level dedup and audit.
 """
+import hashlib
 import io
 import logging
 import uuid as uuid_mod
 
 from flask import current_app, jsonify, request, send_file, url_for
+from sqlalchemy.exc import IntegrityError
 
 from app.models import Contractor, Ticket, TicketPhoto, db
 from app.util.auth import token_required
@@ -99,10 +102,15 @@ def upload_photo():
     """Upload one image tied to a ticket the caller is assigned to.
 
     Multipart fields:
-        ticket_id   (str, required)  UUID of the parent ticket
-        photo       (file, required) the image
-        latitude    (float, optional) capture-time GPS, falls back to EXIF
-        longitude   (float, optional) capture-time GPS, falls back to EXIF
+        ticket_id        (str, required)  UUID of the parent ticket
+        photo            (file, required) the image
+        submission_uuid  (str, optional)  client UUID for offline retry safety
+        latitude         (float, optional) capture-time GPS, falls back to EXIF
+        longitude        (float, optional) capture-time GPS, falls back to EXIF
+
+    The submission_uuid is what makes the mobile offline queue safe: when
+    connectivity flickers and the same upload is retried, we de-dup on this
+    UUID instead of creating a second copy.
     """
     contractor = _get_contractor_for_request_user()
     if not contractor:
@@ -118,6 +126,21 @@ def upload_photo():
     if upload is None or not upload.filename:
         return jsonify({'error': 'photo file is required'}), 400
 
+    submission_uuid = (
+        request.form.get('submission_uuid')
+        or request.headers.get('X-Submission-UUID')
+    )
+    if submission_uuid:
+        try:
+            uuid_mod.UUID(submission_uuid)
+        except (TypeError, ValueError):
+            return jsonify({'error': 'submission_uuid must be a valid UUID'}), 400
+    else:
+        # Server-generated fallback so callers without the header still get
+        # an idempotent row. The client just won't be able to retry without
+        # producing a different UUID. Fine for the basic case.
+        submission_uuid = str(uuid_mod.uuid4())
+
     # Optional client-supplied GPS overrides the EXIF lat/lng if present.
     def _parse_optional_float(name):
         raw = request.form.get(name)
@@ -126,7 +149,7 @@ def upload_photo():
         try:
             return float(raw), None
         except ValueError:
-            return None, jsonify({'error': f'{name} must be a number'}), 400
+            return None, (jsonify({'error': f'{name} must be a number'}), 400)
 
     client_lat, err = _parse_optional_float('latitude')
     if err:
@@ -134,6 +157,19 @@ def upload_photo():
     client_lng, err = _parse_optional_float('longitude')
     if err:
         return err
+
+    # ── Idempotency: existing row for this submission_uuid? ───────────────
+    existing = (
+        db.session.query(TicketPhoto)
+        .filter(TicketPhoto.submission_uuid == submission_uuid)
+        .first()
+    )
+    if existing:
+        # Re-validate ownership before serving — otherwise an attacker who
+        # knew/guessed someone else's submission_uuid could fish for photos.
+        if existing.uploaded_by != contractor.id:
+            return jsonify({'error': 'forbidden'}), 403
+        return jsonify(_serialise(existing)), 200
 
     # ── Authorisation: caller must be the assigned contractor ─────────────
     ticket = _get_ticket_for_assigned_contractor(ticket_id, contractor)
@@ -177,6 +213,7 @@ def upload_photo():
 
     # Re-encode without metadata. Bytes are now safe to store in the DB.
     sanitised_bytes = strip_exif_and_reencode(img, fmt)
+    content_hash = hashlib.sha256(sanitised_bytes).hexdigest()
 
     # ── Persist row ───────────────────────────────────────────────────────
     photo = TicketPhoto(
@@ -186,11 +223,26 @@ def upload_photo():
         latitude=final_lat,
         longitude=final_lng,
         uploaded_by=contractor.id,
+        submission_uuid=submission_uuid,
+        content_hash=content_hash,
         created_by=request.user_id,
         updated_by=request.user_id,
     )
     db.session.add(photo)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except IntegrityError:
+        # Race: a concurrent upload won with the same submission_uuid.
+        # Roll back and serve the canonical row.
+        db.session.rollback()
+        winner = (
+            db.session.query(TicketPhoto)
+            .filter(TicketPhoto.submission_uuid == submission_uuid)
+            .first()
+        )
+        if winner and winner.uploaded_by == contractor.id:
+            return jsonify(_serialise(winner)), 200
+        return jsonify({'error': 'submission conflict'}), 409
 
     return jsonify(_serialise(photo)), 201
 

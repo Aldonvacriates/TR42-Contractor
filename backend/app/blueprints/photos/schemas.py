@@ -10,6 +10,8 @@ class PhotoOutSchema(Schema):
     id = fields.Str()
     ticket_id = fields.Str()
     uploaded_by = fields.Str()
+    submission_uuid = fields.Str(allow_none=True)
+    content_hash = fields.Str(allow_none=True)
     latitude = fields.Float(allow_none=True)
     longitude = fields.Float(allow_none=True)
     created_at = fields.DateTime()

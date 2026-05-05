@@ -4,9 +4,10 @@
 Walks the happy path plus a couple of security probes:
     1. POST /auth/login                     get a JWT
     2. POST /api/photos                     upload a photo
-    3. GET  /api/photos?ticket_id=<id>      list photos
-    4. GET  /api/photos/<photo_id>          fetch bytes + verify headers
-    5. GET  /api/photos/<photo_id> (no JWT) auth-required check
+    3. POST /api/photos (same UUID)         idempotency check
+    4. GET  /api/photos?ticket_id=<id>      list photos
+    5. GET  /api/photos/<photo_id>          fetch bytes + verify headers
+    6. GET  /api/photos/<photo_id> (no JWT) auth-required check
 
 Exits 0 on success, non-zero on first failure with the offending response
 body printed.
@@ -28,14 +29,10 @@ Pre-conditions:
 
 Override the base URL with SMOKE_TEST_URL env var if your backend isn't on
 the default port (e.g. SMOKE_TEST_URL=http://localhost:5001).
-
-Note: idempotency / offline retry tests are not in this smoke test yet
-because the Supabase ticket_photo schema doesn't carry submission_uuid /
-content_hash. Once Daniel adds those columns, this file gets a step 2.5
-that re-POSTs the same photo and confirms the server returns the same row.
 """
 import os
 import sys
+import uuid
 from pathlib import Path
 
 import requests
@@ -95,13 +92,15 @@ def main():
     headers = {'Authorization': f'Bearer {token}'}
 
     # ── 2. Upload ────────────────────────────────────────────────────
-    print(f'\n-> POST {BASE_URL}/api/photos  (ticket_id={ticket_id})')
+    submission_uuid = str(uuid.uuid4())
+    print(f'\n-> POST {BASE_URL}/api/photos  '
+          f'(ticket_id={ticket_id}, submission_uuid={submission_uuid[:8]}...)')
 
     with open(photo_path, 'rb') as f:
         r = requests.post(
             f'{BASE_URL}/api/photos',
             headers=headers,
-            data={'ticket_id': ticket_id},
+            data={'ticket_id': ticket_id, 'submission_uuid': submission_uuid},
             files={'photo': (photo_path.name, f, 'application/octet-stream')},
             timeout=30,
         )
@@ -114,9 +113,26 @@ def main():
     print(f'OK upload')
     print(f'   id={photo_id}')
     print(f'   latitude={photo.get("latitude")}  longitude={photo.get("longitude")}')
+    print(f'   content_hash={(photo.get("content_hash") or "")[:16]}...')
     print(f'   url={photo.get("url")}')
 
-    # ── 3. List ──────────────────────────────────────────────────────
+    # ── 3. Idempotency: re-POST with the same submission_uuid ─────────
+    print(f'\n-> POST {BASE_URL}/api/photos AGAIN with the same submission_uuid')
+    with open(photo_path, 'rb') as f:
+        r = requests.post(
+            f'{BASE_URL}/api/photos',
+            headers=headers,
+            data={'ticket_id': ticket_id, 'submission_uuid': submission_uuid},
+            files={'photo': (photo_path.name, f, 'application/octet-stream')},
+            timeout=30,
+        )
+    if r.status_code != 200:
+        fail(f'idempotency expected 200, got {r.status_code}', r)
+    if r.json()['id'] != photo_id:
+        fail(f'idempotency returned different id (got {r.json()["id"]!r}, expected {photo_id})')
+    print(f'OK idempotent (returned same id={photo_id})')
+
+    # ── 4. List ──────────────────────────────────────────────────────
     print(f'\n-> GET {BASE_URL}/api/photos?ticket_id={ticket_id}')
     r = requests.get(
         f'{BASE_URL}/api/photos',
@@ -132,7 +148,7 @@ def main():
         fail(f'uploaded photo {photo_id} not in list response: {photos}')
     print(f'OK list ({len(photos)} photos for ticket {ticket_id})')
 
-    # ── 4. Fetch bytes + verify headers ──────────────────────────────
+    # ── 5. Fetch bytes + verify headers ──────────────────────────────
     print(f'\n-> GET {BASE_URL}/api/photos/{photo_id}')
     r = requests.get(
         f'{BASE_URL}/api/photos/{photo_id}',
@@ -158,7 +174,7 @@ def main():
         else:
             print(f'WARN header {name}: expected {want!r}, got {got!r}')
 
-    # ── 5. Unauthenticated fetch must 401 ────────────────────────────
+    # ── 6. Unauthenticated fetch must 401 ────────────────────────────
     print(f'\n-> GET {BASE_URL}/api/photos/{photo_id}  (no Authorization header)')
     r = requests.get(f'{BASE_URL}/api/photos/{photo_id}', timeout=10)
     if r.status_code != 401:
