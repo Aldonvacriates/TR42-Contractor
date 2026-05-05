@@ -1,19 +1,14 @@
-import {Styles} from "@/constants/Styles"
-import React, {FC, ReactNode,useContext,useEffect,useRef,useState} from "react"
-import {Keyboard,Platform,ScrollView,useWindowDimensions,View,Text, Image} from "react-native"
 import { MainFrame } from "@/components/MainFrame"
-import { useRoute } from '@react-navigation/native'
+import { Message } from "@/components/Message"
 import { SearchBar } from "@/components/SearchBar"
-import { Message,MessageType } from "@/components/Message"
-import {InitID} from "@/utils/InitID"
-import { TimeFormater } from "@/utils/timeFormater"
-import { useNavigation } from "@react-navigation/native"
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from "@/App"
-import { AppContext,getUser} from "@/contexts/AppContext"
-import { canUseBiometricAuthentication } from "expo-secure-store"
 import { Assets } from "@/constants/Assets"
-import { createIconSetFromFontello } from "@expo/vector-icons"
+import { Styles } from "@/constants/Styles"
+import { AppContext, getUser } from "@/contexts/AppContext"
+import { InitID } from "@/utils/InitID"
+import { TimeFormater } from "@/utils/timeFormater"
+import { useRoute } from '@react-navigation/native'
+import React, { FC, ReactNode, useContext, useEffect, useRef, useState } from "react"
+import { Image, Keyboard, Text, useWindowDimensions, View } from "react-native"
 
 type Props = {
 
@@ -33,8 +28,6 @@ type ScrollMetrics = {
     contentHeight: number
 }
 
-const FOOTER_MENU_HEIGHT = 110;
-const KEYBOARD_GAP = 8;
 const LOAD_PREVIOUS_DRAG_DISTANCE = 20;
 const LOAD_PREVIOUS_HOLD_TIME = 2000;
    const MAXPERLOAD = 2;
@@ -84,7 +77,6 @@ export const Chat:FC = (props) =>{
     const {userInfo} = useContext(AppContext)
     const sessionId = createSession(userInfo.userid || "",contactId)  
     const {height: windowHeight} = useWindowDimensions();
-    const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>()
     
     const MaxMessage = 10;
     let MessageSent = useRef(0);
@@ -126,8 +118,6 @@ export const Chat:FC = (props) =>{
    
     const {reverseStack} = useContext(AppContext);
     const [messages,setMessage] = useState(messageSlice(previousDemoMessages.current,INTIALLOAD));
-    const scrollRef = useRef<ScrollView>(null);
-    const [searchBarBottom,setSearchBarBottom] = useState(FOOTER_MENU_HEIGHT);
     const lastSync = useRef(TimeFormater.getTimeStamp("UTC-DATE"));
     const messageIds = useRef(new Set(messageSlice(previousDemoMessages.current,INTIALLOAD).map(item => item.id)));
     const fromSet = useRef((previousDemoMessages.current.length >= INTIALLOAD) ? previousDemoMessages.current.length - INTIALLOAD - MAXPERLOAD : 0);
@@ -138,19 +128,8 @@ export const Chat:FC = (props) =>{
     const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isAtBottomRef = useRef(false);
     useEffect(() => {
-        const showSubscription = Keyboard.addListener(
-            Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
-            (event) => {
-                const keyboardOverlap = Math.max(0, windowHeight - event.endCoordinates.screenY);
-                setSearchBarBottom(Math.max(FOOTER_MENU_HEIGHT, keyboardOverlap + KEYBOARD_GAP));
-            }
-        );
-        const hideSubscription = Keyboard.addListener(
-            Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide",
-            () => {
-                setSearchBarBottom(FOOTER_MENU_HEIGHT);
-            }
-        );
+      
+   
            const syncMessages = (messages:TypeMessage[]) =>{
             
             const tm = setInterval(() =>{   
@@ -174,8 +153,7 @@ export const Chat:FC = (props) =>{
                 }
                const tm = syncMessages(previousDemoMessages.current);
         return () => {
-            showSubscription.remove();
-            hideSubscription.remove();
+           
             clearInterval(tm);
             clearHoldTimer();
         };
@@ -243,7 +221,7 @@ export const Chat:FC = (props) =>{
     const previousMessages = async (messages:TypeMessage[], wait:number) => {
                 
             const data = messages.slice(fromSet.current,toSet.current).sort(
-                (a,b) => new Date(a.utcTimeStamp).getTime() - new Date(b.utcTimeStamp).getTime()
+                (a,b) => new Date(b.utcTimeStamp).getTime() - new Date(a.utcTimeStamp).getTime()
             ).filter(p => {
                         if(!messageIds.current.has(p.id)){
                             messageIds.current.add(p.id)
@@ -252,7 +230,7 @@ export const Chat:FC = (props) =>{
                         return(false)          
                     });
                     
-                setMessage(prev => [...prev,...data]);
+                setMessage(prev => [...prev,...data].sort((a,b) => new Date(a.utcTimeStamp).getTime() - new Date(b.utcTimeStamp).getTime()));
 
               nextSlice(MAXPERLOAD)
 
@@ -284,7 +262,7 @@ export const Chat:FC = (props) =>{
             loadingPreviousMessages.current = true;
             setLoading(true);
             try{
-                await previousMessages(previousDemoMessages.current,2000);
+                await previousMessages(previousDemoMessages.current,1000);
             }
             finally{
                 setLoading(false);
@@ -349,12 +327,14 @@ export const Chat:FC = (props) =>{
             contentHeight: contentSize.height,
          });
          const isDraggingUp = movement > LOAD_PREVIOUS_DRAG_DISTANCE || scrollDelta > 0;
-         if(isAtBottomRef.current && isDraggingUp){
-          startPreviousMessagesHold(metrics);
-         }
-         else if(!isAtBottomRef.current || !hasPreviousMessages()){
-          clearHoldTimer();
-         }
+         if(reverseStack === true){
+            if(isAtBottomRef.current && isDraggingUp){
+            startPreviousMessagesHold(metrics);
+            }
+            else if(!isAtBottomRef.current || !hasPreviousMessages()){
+            clearHoldTimer();
+            }
+        }
     }
     const movement = (movement = 0,metrics?:ScrollMetrics) =>{
         if(movement > LOAD_PREVIOUS_DRAG_DISTANCE){
@@ -373,7 +353,7 @@ export const Chat:FC = (props) =>{
             </View>}
         <SearchBar placeHolder="Message..." buttonText="Send" multiline onClick={(msg:string)=>{(msg) && SendMessage(msg)}} resetOnSubmit={true}/>
         </>
-        } onRefresh={() => {previousMessages(previousDemoMessages.current,2000)}} onScroll={(event:any,touch?:number,movement?:number,metrics?:ScrollMetrics) => {scroll(event,touch,movement,metrics)}} onMovement={(move:number,metrics?:ScrollMetrics) => {movement(move,metrics)}} onTouchEnd={() => {clearHoldTimer()}}>
+        } onRefresh={() => {if(reverseStack === false) {previousMessages(previousDemoMessages.current,2000)}}} onScroll={(event:any,touch?:number,movement?:number,metrics?:ScrollMetrics) => {scroll(event,touch,movement,metrics)}} onMovement={(move:number,metrics?:ScrollMetrics) => {movement(move,metrics)}} onTouchEnd={() => {clearHoldTimer()}}>
         
             <View style={Styles.Chat.container}>
               
