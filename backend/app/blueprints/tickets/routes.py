@@ -30,10 +30,17 @@ def update_ticket(ticket_id):
     
     user_id = request.user_id
     
-    try: 
+    try:
         contractor = db.session.query(Contractor).filter(Contractor.user_id == user_id).first()
-        ticket = db.session.query(Ticket).filter(Ticket.id == ticket_id, Ticket.assigned_contractor == contractor.user_id).first()
-    except Exception as e:
+        if not contractor:
+            return jsonify({'error': 'Ticket not found'}), 404
+        # Ticket.assigned_contractor is an FK to contractor.id, not contractor.user_id.
+        # The previous version compared against user_id and silently 404'd every request.
+        ticket = db.session.query(Ticket).filter(
+            Ticket.id == ticket_id,
+            Ticket.assigned_contractor == contractor.id,
+        ).first()
+    except Exception:
         return jsonify({'error': 'Error occurred while fetching data'}), 500
 
     if not ticket:
