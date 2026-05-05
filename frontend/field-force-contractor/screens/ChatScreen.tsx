@@ -77,7 +77,7 @@ export const Chat:FC = (props) =>{
     const {userInfo} = useContext(AppContext)
     const sessionId = createSession(userInfo.userid || "",contactId)  
     const {height: windowHeight} = useWindowDimensions();
-    
+    const CheckMsg = 10000; //Time interval to check for new messages
     const MaxMessage = 10;
     let MessageSent = useRef(0);
     let contactuser = getUser(contactId);
@@ -144,11 +144,11 @@ export const Chat:FC = (props) =>{
                   lastSync.current = TimeFormater.getTimeStamp("UTC-DATE")
                   if(newMessages.length > 0){
                     setMessage(prev => [...prev,...newMessages])  
-                    console.log("Found " + newMessages.length + " New Messages")
+                    
                   
                   }       
                                               
-                    },5000)
+                    },CheckMsg)
                     return(tm)
                 }
                const tm = syncMessages(previousDemoMessages.current);
@@ -165,7 +165,7 @@ export const Chat:FC = (props) =>{
 
               const tm = setInterval(() =>{
                      if(MaxMessage > MessageSent.current){
-                            console.log("Testing" + MessageSent.current);
+                            
                             previousDemoMessages.current.push( {sessionId:sessionId, id:InitID.getId(),message:"Test Message " + MessageSent.current,senderId:contactId, utcTimeStamp:TimeFormater.getTimeStamp("UTC-DATE")})
                             MessageSent.current++
                      }
@@ -181,7 +181,7 @@ export const Chat:FC = (props) =>{
    }
   
     const SendMessage = (mesg:string) =>{ 
-        StartTest();
+        //StartTest();    //Sends test messages in intervals for testing
         setMessage(prev => [...prev,{
             sessionId:sessionId,
             id:InitID.getId(),
