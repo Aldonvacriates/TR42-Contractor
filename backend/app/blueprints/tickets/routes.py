@@ -20,7 +20,7 @@ def ensure_utc(dt):
 #contractor can update status, add notes.
 #any anomaly flags or updates will be sent to vendor and client to view
 
-@tickets_bp.route('/<int:ticket_id>', methods=['PUT'])
+@tickets_bp.route('/<ticket_id>', methods=['PUT'])
 @token_required
 def update_ticket(ticket_id):
 
@@ -30,10 +30,17 @@ def update_ticket(ticket_id):
     
     user_id = request.user_id
     
-    try: 
+    try:
         contractor = db.session.query(Contractor).filter(Contractor.user_id == user_id).first()
-        ticket = db.session.query(Ticket).filter(Ticket.id == ticket_id, Ticket.assigned_contractor == contractor.user_id).first()
-    except Exception as e:
+        if not contractor:
+            return jsonify({'error': 'Ticket not found'}), 404
+        # Ticket.assigned_contractor is an FK to contractor.id, not contractor.user_id.
+        # The previous version compared against user_id and silently 404'd every request.
+        ticket = db.session.query(Ticket).filter(
+            Ticket.id == ticket_id,
+            Ticket.assigned_contractor == contractor.id,
+        ).first()
+    except Exception:
         return jsonify({'error': 'Error occurred while fetching data'}), 500
 
     if not ticket:
@@ -52,27 +59,31 @@ def update_ticket(ticket_id):
         #IF UPDATING STATUS: Check for time start/end and location start/end
         if key == "status":
             
-            if value == "in_progress":
+            if value == "IN_PROGRESS":
                 if ticket.start_time:
                     return jsonify({'error': 'Ticket already started'}), 400
                 
                 if "start_time" not in ticket_update_data:
                     return jsonify({'error': 'start_time required when starting'}), 400
-                if "contractor_start_location" not in ticket_update_data:
-                    return jsonify({'error': 'contractor_start_location required when starting'}), 400
+                if "contractor_start_latitude" not in ticket_update_data:
+                    return jsonify({'error': 'contractor_start_latitude required when starting'}), 400
+                if "contractor_start_longitude" not in ticket_update_data:
+                    return jsonify({'error': 'contractor_start_longitude required when starting'}), 400
 
-            elif value == "completed":
+            elif value == "PENDING_APPROVAL":
                 if not ticket.start_time:
-                    return jsonify({'error': 'Cannot complete before starting'}), 400
+                    return jsonify({'error': 'Cannot request approval before starting'}), 400
 
                 if ticket.end_time:
                     return jsonify({'error': 'Ticket already completed'}), 400
 
                 if "end_time" not in ticket_update_data:
                     return jsonify({'error': 'end_time required when completing'}), 400
-                if "contractor_end_location" not in ticket_update_data:
-                    return jsonify({'error': 'contractor_end_location required when completing'}), 400
-                
+                if "contractor_end_latitude" not in ticket_update_data:
+                    return jsonify({'error': 'contractor_end_latitude required when completing'}), 400
+                if "contractor_end_longitude" not in ticket_update_data:
+                    return jsonify({'error': 'contractor_end_longitude required when completing'}), 400
+
                 #ANOMALY CHECKS:
                 
                 end_time_utc = ensure_utc(ticket_update_data["end_time"])
@@ -85,7 +96,7 @@ def update_ticket(ticket_id):
                     else:
                         ticket.anomaly_reason = new_reason
 
-                if ticket_update_data["contractor_end_location"] == ticket.contractor_start_location and ticket.route is not None:
+                if ticket_update_data["contractor_end_latitude"] == ticket.contractor_start_latitude and ticket_update_data["contractor_end_longitude"] == ticket.contractor_start_longitude and ticket.route is not None:
                     ticket.anomaly_flag = True
                     new_reason = "There is a designated route. Logged end location should show as different from start location."
                     if ticket.anomaly_reason:

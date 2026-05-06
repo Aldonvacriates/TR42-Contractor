@@ -10,6 +10,7 @@ from .blueprints.inspections import inspections_bp
 from .blueprints.drive_time import drive_time_bp
 from .blueprints.ai import ai_bp
 from .blueprints.analytics import analytics_bp
+from .blueprints.photos import photos_bp
 
 
 def create_app(config_name):
@@ -30,5 +31,6 @@ def create_app(config_name):
     app.register_blueprint(drive_time_bp, url_prefix='/drive-time')
     app.register_blueprint(ai_bp, url_prefix='/api/ai')
     app.register_blueprint(analytics_bp, url_prefix='/analytics')
+    app.register_blueprint(photos_bp, url_prefix='/api/photos')
 
     return app

@@ -12,13 +12,14 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { NetworkProvider } from "./contexts/NetworkContext";
 
 // ── Jonathan ──────────────────────────────────────
 import { screenConfig } from "./constants/ScreenConfig";
 import { Chat } from "./screens/ChatScreen";
 import { Contacts } from "./screens/ContactScreen";
 import { SplashScreen} from "./screens/SplashScreen";
-import { AppProvider} from "./contexts/AppContext";
+import { AppContext, AppProvider} from "./contexts/AppContext";
 import DriveTimeTrackerScreen from "./screens/DriveTimeTrackerScreen";
 import HomeScreen from "./screens/HomeScreen";
 import { InspectionAssistScreen } from "./screens/InspectionAssistScreen";
@@ -40,7 +41,12 @@ import PasswordResetScreen from "./screens/PasswordResetScreen";
 import LicenseScreen from "./screens/LicenseScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import TaskHistoryScreen from "./screens/TaskHistoryScreen";
-
+export type OnSuccessRoute = {
+  [K in keyof RootStackParamList]:
+    undefined extends RootStackParamList[K]
+      ? { screen: K; params?: RootStackParamList[K] }
+      : { screen: K; params: RootStackParamList[K] }
+}[keyof RootStackParamList];
 export type RootStackParamList = {
   // ── Always visible ───────────────────────────────────────────
   SplashScreen: undefined;
@@ -61,7 +67,10 @@ export type RootStackParamList = {
 
   // ── Troy — Auth screens ──────────────────────────────────────
   Login: undefined;
-  OfflineLogin: undefined;
+  OfflineLogin: {
+    pendingToken: string;
+    pendingUser: { id: number; username: string; role: string };
+  };
 
   // BiometricCheck receives the pending token and user from LoginScreen.
   // login() is NOT called until the biometric scan succeeds here, ensuring
@@ -69,6 +78,7 @@ export type RootStackParamList = {
   BiometricCheck: {
     pendingToken: string;
     pendingUser: { id: number; username: string; role: string };
+    onSuccess?: OnSuccessRoute
   };
 
   PasswordReset: undefined;
@@ -155,12 +165,16 @@ function RootNavigator() {
 // ── App root ───────────────────────────────────────────────────────────────
 export default function App() {
   const [externalFontsLoaded, setExternalFontsLoaded] = useState(false);
+ 
   useEffect(() => {
+  
+    
     const load = async () => {
       const isLoaded = await LoadFonts();
       setExternalFontsLoaded(isLoaded);
     };
     load();
+    
   }, []);
 
   if (!externalFontsLoaded) return null;
@@ -169,9 +183,11 @@ export default function App() {
     <AppProvider>
       <ThemeProvider>
         <AuthProvider>
-          <NavigationContainer>
-            <RootNavigator />
-          </NavigationContainer>
+          <NetworkProvider>
+            <NavigationContainer>
+              <RootNavigator />
+            </NavigationContainer>
+          </NetworkProvider>
         </AuthProvider>
       </ThemeProvider>
     </AppProvider>
