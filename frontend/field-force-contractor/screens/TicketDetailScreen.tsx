@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Alert, ActivityIndicator, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Alert, ActivityIndicator, Linking, Image } from 'react-native';
+import { uploadPhotoOrEnqueue } from '../utils/photoOutbox';
+import { useNetwork } from '../contexts/NetworkContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MainFrame } from '../components/MainFrame';
@@ -211,6 +213,33 @@ export default function TicketDetailScreen() {
     }
   };
 
+  const uploadPhotos = async (
+    ticketId: string | number,
+    uris: string[],
+  ): Promise<{ sent: number; queued: number }> => {
+    if (uris.length === 0) return { sent: 0, queued: 0 };
+    let sent = 0, queued = 0;
+    for (const uri of uris) {
+      // Pull the geotag we captured at photo-pick time so the upload can
+      // include lat/lng even after a long offline window.
+      let lat: number | null = null, lng: number | null = null;
+      try {
+        const log = JSON.parse(await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]');
+        const entry = log.find((g: { uri: string }) => g.uri === uri);
+        if (entry) { lat = entry.lat ?? null; lng = entry.lng ?? null; }
+      } catch { /* fall through with null lat/lng */ }
+
+      const result = await uploadPhotoOrEnqueue({
+        ticketId,
+        fileUri: uri,
+        latitude:  lat,
+        longitude: lng,
+      });
+      if (result.status === 'sent') sent += 1; else queued += 1;
+    }
+    return { sent, queued };
+  };
+
   const handleCompleteTask = async () => {
     try {
       const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -227,7 +256,22 @@ export default function TicketDetailScreen() {
     } catch {
       // Non-blocking — don't prevent completion if GPS fails
     }
+
+    if (photoUris.length > 0) {
+      const { sent, queued } = await uploadPhotos(task.id, photoUris);
+      if (queued > 0) {
+        Alert.alert(
+          'Photos queued',
+          `${sent} uploaded, ${queued} saved offline. They'll send automatically when you're back online.`,
+        );
+      }
+    }
+
     navigation.navigate('TaskConfirmation' as never, { taskId } as never);
+  };
+
+  const handleRemovePhoto = (index: number) => {
+    setPhotoUris(prev => prev.filter((_, i) => i !== index));
   };
 
   const closeModal = () => {
@@ -381,18 +425,24 @@ export default function TicketDetailScreen() {
             <Text style={styles.photoCount}>{photoUris.length}/{task.photosRequired}</Text>
           </View>
           <View style={styles.photoRow}>
-            {[...Array(task.photosRequired)].map((_, i) => (
-              <View
-                key={i}
-                style={[styles.photoSlot, i < photoUris.length && styles.photoSlotDone]}
-              >
-                <Ionicons
-                  name={i < photoUris.length ? 'checkmark-circle' : 'camera'}
-                  size={24}
-                  color={i < photoUris.length ? '#22c55e' : '#6b7280'}
-                />
+            {photoUris.map((uri, i) => (
+              <View key={`p-${i}`} style={[styles.photoSlot, styles.photoSlotDone]}>
+                <Image source={{ uri }} style={styles.photoPreview} />
+                <TouchableOpacity
+                  style={styles.photoRemoveBtn}
+                  onPress={() => handleRemovePhoto(i)}
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                >
+                  <Ionicons name="close-circle" size={18} color="#ef4444" />
+                </TouchableOpacity>
               </View>
             ))}
+            {photoUris.length < task.photosRequired &&
+              [...Array(task.photosRequired - photoUris.length)].map((_, i) => (
+                <View key={`empty-${i}`} style={styles.photoSlot}>
+                  <Ionicons name="camera" size={24} color="#6b7280" />
+                </View>
+              ))}
           </View>
             {photoUris.length < task.photosMax && (
               <View style={styles.photoActions}>
@@ -647,7 +697,12 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed', borderColor: BORDER,
     alignItems: 'center', justifyContent: 'center',
   },
-  photoSlotDone: { borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)' },
+  photoSlotDone: { borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', borderStyle: 'solid', overflow: 'hidden' },
+  photoPreview: { width: '100%', height: '100%', borderRadius: 6 },
+  photoRemoveBtn: {
+    position: 'absolute', top: 2, right: 2,
+    backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 10,
+  },
 
   actions: { width: '90%', gap: 10, marginBottom: 32 },
   btnPrimary: {
