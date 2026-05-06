@@ -50,23 +50,27 @@ export const demoUsers:userTable[] = [
 ]
 export const getUser = (userid:string) =>{
 
-    let user = demoUsers.find(p => p.userid === userid) || undefined
+    const user: userTable|boolean = demoUsers.find(p => p.userid === userid)  || false
+    if(user){
+      return(user)
+    }
+    return(false)
   
-    return(user);
+   
 }
 export const demoClient = (userid:string) => {
-     let user = getUser(userid);
+     const user = getUser(userid);
+     if(user !== false ){
      return{...user!,lastName:`${user!.lastName} [CLIENT]`}
+     }
+     return(false)
    }
 export const AppProvider = ({children} : {children:ReactNode}) =>{
    const [mount,setMounted] = useState(false);
    const [reverseStack,setReverseStack] = useState(false);
    const [devMode,setDevMode] = useState(false);
-   const [userInfo,setUserInfo] = useState(getUser("0"));
-   
-   
- 
-   const [client,setClient] = useState<userTable | undefined>(demoClient("1"));
+   const [userInfo,setUserInfo] = useState(getUser("0")); 
+   const [client,setClient] = useState<userTable | boolean>(demoClient("1"));
    
     return(
 
