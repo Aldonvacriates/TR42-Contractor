@@ -12,6 +12,37 @@ import { getToken } from './secureStorage';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
+/** A photo row as returned by GET /api/photos?ticket_id=X.
+ *  Mirrors the backend PhotoOutSchema. The `url` field is the relative
+ *  fetch path for the bytes (`/api/photos/<id>`); callers prepend
+ *  API_BASE_URL when displaying. */
+export interface TicketPhotoSummary {
+  id:               string;
+  ticket_id:        string;
+  uploaded_by:      string;
+  submission_uuid:  string | null;
+  content_hash:     string | null;
+  latitude:         number | null;
+  longitude:        number | null;
+  created_at:       string;
+  updated_at:       string | null;
+  created_by:       string;
+  updated_by:       string;
+  url:              string;
+}
+
+/** Slim shape we need from /contractors/assigned-tickets for the
+ *  photo-review picker. The endpoint returns the full ticket but we
+ *  only need id + a label-ish field. Anything extra is ignored at
+ *  parse time. */
+export interface AssignedTicketSummary {
+  id:          string;
+  description: string;
+  status:      string;
+  priority:    string;
+  created_at:  string;
+}
+
 export interface InspectionReport {
   title:               string;
   priority:            'low' | 'medium' | 'high';
@@ -262,6 +293,51 @@ export function saveReport(
 /** List saved reports for the logged-in contractor (newest first). */
 export function listReports(): Promise<SavedReport[]> {
   return jsonRequest<SavedReport[]>('/api/ai/reports');
+}
+
+// ── Photo review (uses /api/photos and /contractors endpoints) ─────────────
+
+/** Tickets currently assigned to the logged-in contractor. Used by the
+ *  PhotoReviewScreen ticket selector. */
+export function listAssignedTickets(): Promise<AssignedTicketSummary[]> {
+  return jsonRequest<AssignedTicketSummary[]>('/contractors/assigned-tickets');
+}
+
+/** Photos uploaded against a specific ticket the caller is assigned to.
+ *  Backend returns metadata only (no bytes); use buildPhotoUrl() to construct
+ *  the URL for the actual image when rendering thumbnails. */
+export function listTicketPhotos(ticketId: string): Promise<TicketPhotoSummary[]> {
+  const qs = encodeURIComponent(ticketId);
+  return jsonRequest<TicketPhotoSummary[]>(`/api/photos?ticket_id=${qs}`);
+}
+
+/** Build the absolute URL for a photo's bytes. The backend's URL field is
+ *  relative; we prepend API_BASE_URL so React Native's <Image source={{ uri }}>
+ *  can fetch it directly. */
+export function buildPhotoUrl(photoIdOrRelative: string): string {
+  // Accept either a bare photo id or the relative URL the backend returns.
+  if (photoIdOrRelative.startsWith('http')) return photoIdOrRelative;
+  if (photoIdOrRelative.startsWith('/'))    return `${API_BASE_URL}${photoIdOrRelative}`;
+  return `${API_BASE_URL}/api/photos/${photoIdOrRelative}`;
+}
+
+/** Fetch the photo bytes with the auth header attached. React Native's
+ *  <Image> can't pass headers, so we have to do this manually and turn the
+ *  blob into a base64 data URI. Used by PhotoReviewScreen to render
+ *  thumbnails behind the auth-required photos endpoint. */
+export async function fetchPhotoDataUri(photoId: string): Promise<string> {
+  const res = await fetch(buildPhotoUrl(photoId), {
+    method:  'GET',
+    headers: await authHeaders(),
+  });
+  if (!res.ok) await asApiError(res);
+  const blob = await res.blob();
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror   = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
 }
 
 // ── Error UX helper ────────────────────────────────────────────────────────
