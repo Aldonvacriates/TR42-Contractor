@@ -21,7 +21,7 @@ import { MainFrame } from '@/components/MainFrame'
 import { SearchBar } from '@/components/SearchBar'
 import { InitID } from '@/utils/InitID'
 import { TimeFormater } from '@/utils/timeFormater'
-import { chat, ChatMessage as AIChatMessage } from '@/utils/aiClient'
+import { chat, ChatMessage as AIChatMessage, friendlyAIError } from '@/utils/aiClient'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -156,7 +156,7 @@ export const ChatAssistantScreen: FC = () => {
             setBubbles(curr => [...curr, {
                 id:        InitID.getId(),
                 role:      'assistant',
-                text:      `Sorry, the assistant is unavailable right now. ${e?.error ?? 'Please try again.'}`,
+                text:      friendlyAIError(e),
                 timeStamp: TimeFormater.getTimeStamp(),
             }])
         } finally {

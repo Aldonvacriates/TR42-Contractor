@@ -263,3 +263,49 @@ export function saveReport(
 export function listReports(): Promise<SavedReport[]> {
   return jsonRequest<SavedReport[]>('/api/ai/reports');
 }
+
+// ── Error UX helper ────────────────────────────────────────────────────────
+
+/**
+ * Convert a backend ApiError into a short, contractor-friendly message.
+ * Strips upstream JSON noise (e.g. "{'error': {'code': 503, ...}}") and
+ * branches on the AI_* code so the UI never shows raw provider tracebacks.
+ *
+ * Use in catch blocks:
+ *   catch (e) { addMessage(friendlyAIError(e), 'received'); }
+ */
+export function friendlyAIError(err: unknown): string {
+  const e = err as Partial<ApiError> | undefined;
+  const code = e?.code;
+
+  switch (code) {
+    case 'AI_RATE_LIMITED':
+      return 'The AI service is busy right now. Try again in a moment.';
+    case 'AI_SERVICE_ERROR':
+      return 'The AI service is temporarily unavailable. Try again in a moment.';
+    case 'AI_BAD_RESPONSE':
+      return "The AI returned a response I couldn't read. Try again.";
+    case 'AI_CONFIG_MISSING':
+      return 'AI is not configured on the server. Tell Aldo to set GEMINI_API_KEY.';
+    case 'AI_UNAUTHORIZED':
+      return "You don't have access to that resource.";
+    case 'AI_NOT_FOUND':
+      return "I couldn't find that item.";
+    case 'AI_BAD_REQUEST': {
+      // Pull out the user-relevant part if backend included details.
+      const detail = (e?.error ?? '').replace(/^Invalid request:\s*/i, '');
+      return detail || 'That request was missing or invalid.';
+    }
+  }
+
+  // Network / offline case — request never completed.
+  if (e?.offline) {
+    return "You're offline. The request will retry when you reconnect.";
+  }
+
+  // Last resort: scrub any raw upstream JSON out of the error string before
+  // showing it. The backend returns a clean message in 99% of cases; this
+  // only triggers on truly unexpected failures.
+  const raw = e?.error ?? 'Something went wrong. Try again.';
+  return raw.replace(/\{[^}]*\}/g, '').trim() || 'Something went wrong. Try again.';
+}

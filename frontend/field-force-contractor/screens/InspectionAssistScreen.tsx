@@ -17,12 +17,17 @@ import {
     View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useNavigation } from '@react-navigation/native'
+import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { MainFrame } from '@/components/MainFrame'
 import { SearchBar } from '@/components/SearchBar'
 import { InitID } from '@/utils/InitID'
 import { TimeFormater } from '@/utils/timeFormater'
 import { api } from '@/utils/api'
-import { refineReport as apiRefineReport } from '@/utils/aiClient'
+import { refineReport as apiRefineReport, friendlyAIError } from '@/utils/aiClient'
+import { RootStackParamList } from '@/App'
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,6 +197,7 @@ const UserBubble: FC<{ text: string; time: string }> = ({ text, time }) => (
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export const InspectionAssistScreen: FC = () => {
+    const navigation                           = useNavigation<Nav>()
     const [messages, setMessages]              = useState<ChatMessage[]>([])
     const [loading, setLoading]                = useState(false)
     const [suggestionsVisible, setSuggestions] = useState(true)
@@ -226,7 +232,7 @@ export const InspectionAssistScreen: FC = () => {
             addMessage(formatReport(report), 'received', report)
         } catch (e: any) {
             addMessage(
-                `Sorry, I couldn't generate a report. ${e.error ?? 'Please try again.'}`,
+                `Sorry, I couldn't generate a report. ${friendlyAIError(e)}`,
                 'received',
             )
         } finally {
@@ -260,7 +266,7 @@ export const InspectionAssistScreen: FC = () => {
             setMessages(prev => prev.map(m => m.id === msgId ? { ...m, refining: false } : m))
             // Surface the error as a new received message so the user sees it inline.
             addMessage(
-                `Couldn't refine that report. ${e?.error ?? 'Please try again.'}`,
+                `Couldn't refine that report. ${friendlyAIError(e)}`,
                 'received',
             )
             scroll()
@@ -316,6 +322,17 @@ export const InspectionAssistScreen: FC = () => {
                         <Text style={s.welcomeTitle}>Field Force AI</Text>
                         <Text style={s.welcomeBody}>{WELCOME_TEXT}</Text>
                     </View>
+
+                    {/* ── Quick link to saved reports ── */}
+                    <TouchableOpacity
+                        style={s.savedReportsBtn}
+                        onPress={() => navigation.navigate('SavedReports')}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="folder-open-outline" size={16} color="#a78bfa" />
+                        <Text style={s.savedReportsBtnText}>View Saved Reports</Text>
+                        <Ionicons name="chevron-forward" size={14} color="rgba(167,139,250,0.6)" style={{ marginLeft: 'auto' }} />
+                    </TouchableOpacity>
 
                     {/* ── Suggestion chips ── */}
                     {suggestionsVisible && (
@@ -458,6 +475,27 @@ const s = StyleSheet.create({
         color:      'rgba(255,255,255,0.55)',
         textAlign:  'center',
         lineHeight: 20,
+    },
+
+    // Quick link to saved reports (sits between welcome card and chips).
+    // Styled as a "row" rather than a chip so it visually reads as a
+    // navigation shortcut, not an action suggestion.
+    savedReportsBtn: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               10,
+        paddingVertical:   12,
+        paddingHorizontal: 14,
+        borderRadius:      12,
+        borderWidth:       1,
+        borderColor:       'rgba(167,139,250,0.2)',
+        backgroundColor:   'rgba(167,139,250,0.06)',
+        alignSelf:         'stretch',
+    },
+    savedReportsBtnText: {
+        fontFamily: 'poppins-bold',
+        fontSize:   13,
+        color:      '#a78bfa',
     },
 
     // Suggestion chips

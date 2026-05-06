@@ -40,7 +40,7 @@ from .errors import (
     AIError,
     handle_ai_errors,
 )
-from .providers import get_provider
+from .providers import get_provider, resilient_call
 from .schemas import (
     ai_report_schema,
     ai_reports_schema,
@@ -163,14 +163,14 @@ def inspection_assist():
     if not notes:
         raise AIError(AI_BAD_REQUEST, 'notes cannot be empty', 400)
 
-    text = get_provider().generate(
+    text = resilient_call(lambda p: p.generate(
         messages=[{
             'role': 'user',
             'content': f'Convert these field notes into a structured report:\n\n{notes}',
         }],
         system=_INSPECTION_PROMPT,
         max_tokens=1024,
-    )
+    ))
     return jsonify(_parse_json_strict(text)), 200
 
 
@@ -240,11 +240,11 @@ def refine_report():
         f'Apply the feedback and return the revised JSON.'
     )
 
-    text = get_provider().generate(
+    text = resilient_call(lambda p: p.generate(
         messages=[{'role': 'user', 'content': user_message}],
         system=_REFINE_PROMPT,
         max_tokens=1024,
-    )
+    ))
     return jsonify(_parse_json_strict(text)), 200
 
 
@@ -282,13 +282,13 @@ def analyze_photo():
     if not photo.photo_content:
         raise AIError(AI_BAD_REQUEST, 'photo has no content stored', 400)
 
-    text = get_provider().generate_with_image(
+    text = resilient_call(lambda p: p.generate_with_image(
         messages=[{'role': 'user', 'content': 'Analyze this job-site photo.'}],
         system=_PHOTO_PROMPT,
         image_bytes=photo.photo_content,
         mime_type='image/jpeg',
         max_tokens=1024,
-    )
+    ))
     return jsonify(_parse_json_strict(text)), 200
 
 
@@ -307,11 +307,11 @@ def chat():
     if messages[-1]['role'] != 'user':
         raise AIError(AI_BAD_REQUEST, 'last message must be from the user', 400)
 
-    reply = get_provider().generate(
+    reply = resilient_call(lambda p: p.generate(
         messages=messages,
         system=_CHAT_PROMPT,
         max_tokens=1024,
-    )
+    ))
     return jsonify({'reply': reply}), 200
 
 

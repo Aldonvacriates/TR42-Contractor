@@ -39,10 +39,13 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
-from typing import Iterator, List, Optional
+from typing import Callable, Iterator, List, Optional, TypeVar
 
 log = logging.getLogger(__name__)
+
+T = TypeVar('T')
 
 
 # Default model per provider. Kept here so changing models is one line.
@@ -323,3 +326,100 @@ def reset_provider_cache() -> None:
     """Test helper. Drops all cached provider instances so re-init picks up
     new env vars."""
     _provider_cache.clear()
+
+
+# ── Resilience: retry + cross-provider fallback ─────────────────────────────
+
+# Retryable upstream conditions. Both Gemini and Anthropic emit 503 when their
+# infrastructure is temporarily overwhelmed; Gemini's free tier hits this often
+# during peak hours. 429 means rate-limited; we retry once after a short delay.
+_RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+
+
+def _looks_retryable(e: Exception) -> bool:
+    """True if the exception looks like a transient upstream blip worth one
+    quick retry. Conservative: we'd rather give up and try the other provider
+    than retry into a thundering herd."""
+    code = getattr(e, 'status_code', None) or getattr(e, 'code', None)
+    if isinstance(code, int) and code in _RETRYABLE_STATUSES:
+        return True
+    # Gemini errors expose .code as the HTTP status int. Some transports raise
+    # ConnectionError or TimeoutError before any HTTP status exists.
+    name = type(e).__name__
+    if name in ('APIConnectionError', 'ConnectionError', 'TimeoutError'):
+        return True
+    msg = str(e).lower()
+    return any(s in msg for s in ('unavailable', 'overloaded', 'timeout', 'rate'))
+
+
+def _other_provider_name(active: str) -> Optional[str]:
+    """Return the OTHER provider name if its key is configured, else None."""
+    if active == 'gemini' and os.environ.get('ANTHROPIC_API_KEY'):
+        return 'anthropic'
+    if active == 'anthropic' and (os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')):
+        return 'gemini'
+    return None
+
+
+def resilient_call(operation: Callable[[AIProvider], T]) -> T:
+    """Run `operation(provider)` with retry + cross-provider fallback.
+
+    Strategy:
+        1. Run on the active provider.
+        2. If it raises a retryable error, sleep ~1.5s and try once more on
+           the same provider.
+        3. If still failing, try the OTHER provider (Anthropic if active was
+           Gemini and vice versa) one time, but only if the other provider's
+           key is configured. Skip the fallback for AIError(AI_BAD_REQUEST etc.)
+           since those are user-input errors that won't get better elsewhere.
+        4. If everything fails, re-raise the most informative error.
+
+    Designed to be the entry point routes use instead of get_provider().method().
+    """
+    from .errors import AIError, AI_BAD_REQUEST, AI_NOT_FOUND, AI_UNAUTHORIZED
+
+    primary = get_provider()
+
+    # Attempt 1.
+    try:
+        return operation(primary)
+    except AIError as e:
+        # User-input errors won't improve on a different provider; re-raise.
+        if e.code in (AI_BAD_REQUEST, AI_NOT_FOUND, AI_UNAUTHORIZED):
+            raise
+        # Treat AIError with retryable status the same way as upstream errors.
+        if e.status not in _RETRYABLE_STATUSES:
+            raise
+        first_error = e
+    except Exception as e:
+        if not _looks_retryable(e):
+            raise
+        first_error = e
+
+    # Attempt 2: same provider after a brief pause. Gemini's 503s usually
+    # clear within a second or two.
+    log.info('AI call failed transiently on %s; retrying same provider', primary.name)
+    time.sleep(1.5)
+    try:
+        return operation(primary)
+    except AIError as e:
+        if e.code in (AI_BAD_REQUEST, AI_NOT_FOUND, AI_UNAUTHORIZED):
+            raise
+        first_error = e
+    except Exception as e:
+        first_error = e
+
+    # Attempt 3: fall back to the OTHER provider if it's configured.
+    other_name = _other_provider_name(primary.name)
+    if not other_name:
+        log.warning('AI primary failed twice and no fallback provider configured; surfacing error')
+        raise first_error
+
+    log.info('AI primary %s still failing; falling back to %s', primary.name, other_name)
+    try:
+        return operation(get_provider(override=other_name))
+    except Exception as fallback_err:
+        log.warning('AI fallback %s also failed: %s', other_name, fallback_err)
+        # Surface the fallback error since it's the more recent and likely
+        # more actionable signal.
+        raise fallback_err
