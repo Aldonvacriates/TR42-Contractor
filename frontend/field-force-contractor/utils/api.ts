@@ -2,9 +2,28 @@
 // Central HTTP client for all backend requests.
 // Automatically attaches the stored JWT when requiresAuth = true,
 // and throws a typed ApiError on non-2xx responses.
+//
+// ── Offline behaviour ────────────────────────────────────────────────────────
+// GET requests opted into caching (authCachedGet) fall back to the SQLite
+// cache when the device is offline or the network call fails. Successful
+// online fetches refresh the cache.
+//
+// Mutations (authPostQueued / authPutQueued / authPatchQueued) enqueue to the
+// SQLite outbox when offline instead of throwing, and the NetworkProvider
+// drains the queue on reconnect. The vanilla authPost/authPut/authPatch
+// variants still throw on failure — use those when a screen cannot tolerate
+// an optimistic response (e.g. login).
 
 import { Platform } from 'react-native';
 import { getToken, deleteToken } from './secureStorage';
+import { readCache, writeCache } from './cache';
+import {
+  enqueue,
+  drainOutbox,
+  OutboxItem,
+  OutboxMethod,
+} from './outbox';
+import { registerSyncRunner } from '../contexts/NetworkContext';
 
 let _onAuthFailure: (() => void) | null = null;
 export function registerAuthFailureHandler(cb: () => void) { _onAuthFailure = cb; }
@@ -105,6 +124,13 @@ export interface ApiError {
   status: number;
   error:  string;
   code?:  string;
+  /** True when the failure was caused by the device being offline / unreachable. */
+  offline?: boolean;
+}
+
+export interface QueuedResponse {
+  queued:   true;
+  outboxId: number;
 }
 
 export interface LoginPayload {
@@ -157,30 +183,36 @@ export function pingServer(): void {
   fetchWithTimeout(API_BASE_URL, { method: 'GET' }, 5_000).catch(() => {});
 }
 
+async function buildAuthHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(extra ?? {}),
+  };
+  const token = await getToken();
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  return headers;
+}
+
 async function request<T>(
   path:         string,
   options:      RequestInit = {},
   requiresAuth: boolean     = false,
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...(options.headers as Record<string, string> | undefined),
-  };
-
-  if (requiresAuth) {
-    const token = await getToken();
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  }
+  const headers = requiresAuth
+    ? await buildAuthHeaders(options.headers as Record<string, string> | undefined)
+    : {
+        'Content-Type': 'application/json',
+        ...(options.headers as Record<string, string> | undefined),
+      };
 
   let response: Response;
   try {
     response = await fetchWithTimeout(`${API_BASE_URL}${path}`, { ...options, headers });
   } catch {
     throw {
-      status: 0,
-      error:  'Unable to reach the server. Check your internet connection.',
+      status:  0,
+      error:   'Unable to reach the server. Check your internet connection.',
+      offline: true,
     } as ApiError;
   }
 
@@ -207,6 +239,88 @@ async function request<T>(
   return body as T;
 }
 
+// ── Outbox drain ────────────────────────────────────────────────
+// Registered with the NetworkProvider so it can fire when connectivity
+// returns. Replays each queued item with a direct fetch (NOT through the
+// offline-aware wrapper) to avoid re-enqueueing.
+
+async function sendQueuedItem(item: OutboxItem) {
+  const headers = await buildAuthHeaders();
+  const init: RequestInit = {
+    method:  item.method,
+    headers,
+    body:    item.body ?? undefined,
+  };
+
+  try {
+    const response = await fetchWithTimeout(`${API_BASE_URL}${item.path}`, init);
+    if (response.ok) return { ok: true, status: response.status, transient: false };
+
+    // 4xx = permanent (validation, auth, not-found). 5xx = transient.
+    const transient = response.status >= 500;
+    return {
+      ok:       false,
+      status:   response.status,
+      transient,
+      error:    `status ${response.status}`,
+    };
+  } catch (err) {
+    return {
+      ok:        false,
+      status:    0,
+      transient: true,
+      error:     (err as Error)?.message ?? 'network error',
+    };
+  }
+}
+
+registerSyncRunner(async () => {
+  await drainOutbox(sendQueuedItem);
+});
+
+// ── Offline-aware helpers ──────────────────────────────────────
+
+/**
+ * Authenticated GET with read-through caching. Successful responses are
+ * persisted to SQLite. On network failure the most recent cached body is
+ * returned. If there's no cached entry the original error propagates.
+ */
+async function authCachedGet<T>(path: string): Promise<T> {
+  try {
+    const data = await request<T>(path, { method: 'GET' }, true);
+    await writeCache(path, data);
+    return data;
+  } catch (err) {
+    const apiErr = err as ApiError;
+    if (apiErr.offline || apiErr.status === 0) {
+      const cached = await readCache<T>(path);
+      if (cached) return cached.body;
+    }
+    throw err;
+  }
+}
+
+async function enqueueOrSend<T>(
+  method: OutboxMethod,
+  path:   string,
+  body:   unknown,
+): Promise<T | QueuedResponse> {
+  try {
+    return await request<T>(
+      path,
+      { method, body: body === undefined ? undefined : JSON.stringify(body) },
+      true,
+    );
+  } catch (err) {
+    const apiErr = err as ApiError;
+    if (apiErr.offline || apiErr.status === 0) {
+      const outboxId = await enqueue(method, path, body);
+      return { queued: true, outboxId };
+    }
+    throw err;
+  }
+}
+
 // ── Public API surface ─────────────────────────────────────────
 
 export const api = {
@@ -229,4 +343,26 @@ export const api = {
   authPatch<T>(path: string, body: unknown): Promise<T> {
     return request<T>(path, { method: 'PATCH', body: JSON.stringify(body) }, true);
   },
+
+  // ── Offline-aware variants ────────────────────────────────────────────────
+  // GET: serve from SQLite cache when offline. Successful fetches refresh it.
+  authCachedGet,
+
+  // Mutations: enqueue to outbox when offline → resolve with QueuedResponse.
+  // Use isQueued() to branch on whether the call actually hit the server.
+  authPostQueued<T>(path: string, body: unknown): Promise<T | QueuedResponse> {
+    return enqueueOrSend<T>('POST', path, body);
+  },
+
+  authPutQueued<T>(path: string, body: unknown): Promise<T | QueuedResponse> {
+    return enqueueOrSend<T>('PUT', path, body);
+  },
+
+  authPatchQueued<T>(path: string, body: unknown): Promise<T | QueuedResponse> {
+    return enqueueOrSend<T>('PATCH', path, body);
+  },
 };
+
+export function isQueued<T>(res: T | QueuedResponse): res is QueuedResponse {
+  return typeof res === 'object' && res !== null && (res as QueuedResponse).queued === true;
+}

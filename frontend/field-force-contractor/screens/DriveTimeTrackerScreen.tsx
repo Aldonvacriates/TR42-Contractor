@@ -17,7 +17,7 @@ import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { MainFrame } from '../components/MainFrame';
-import { api, ApiError } from '../utils/api';
+import { api, ApiError, isQueued } from '../utils/api';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'DriveTimeTracker'>;
 
@@ -133,10 +133,11 @@ export default function DriveTimeTrackerScreen() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch current session on mount
+  // Fetch current session on mount. Cached so the last-known state still
+  // renders when the device is offline.
   const fetchSession = useCallback(async () => {
     try {
-      const data = await api.authGet<SessionResponse>('/drive-time/current');
+      const data = await api.authCachedGet<SessionResponse>('/drive-time/current');
       setSession(data.session);
       setDrivingSecs(data.driving_seconds);
       setRemainingSecs(data.remaining_seconds);
@@ -170,7 +171,11 @@ export default function DriveTimeTrackerScreen() {
     };
   }, [session?.current_status, session?.is_active]);
 
-  // Change duty status — also creates a session if none exists for today
+  // Change duty status — also creates a session if none exists for today.
+  // Queues offline changes so a contractor's status timeline still records
+  // correctly even when they lose signal mid-shift. The outbox preserves
+  // creation order, so a Driving → On Duty → Off Duty sequence replays as
+  // entered.
   const changeStatus = async (newStatus: DutyStatus) => {
     if (changing) return;
     if (session?.is_active && session?.current_status === newStatus) return;
@@ -179,12 +184,22 @@ export default function DriveTimeTrackerScreen() {
     setError('');
 
     try {
-      const data = await api.authPost<StatusResponse>('/drive-time/status', {
+      const data = await api.authPostQueued<StatusResponse>('/drive-time/status', {
         status: newStatus,
       });
-      setSession(data.session);
-      setDrivingSecs(data.driving_seconds);
-      setRemainingSecs(data.remaining_seconds);
+
+      if (isQueued(data)) {
+        // Offline — apply the status change to the local session optimistically
+        // so the UI reflects the user's intent. The drain on reconnect will
+        // sync the canonical record from the backend.
+        setSession(prev => prev
+          ? { ...prev, current_status: newStatus, is_active: true }
+          : prev);
+      } else {
+        setSession(data.session);
+        setDrivingSecs(data.driving_seconds);
+        setRemainingSecs(data.remaining_seconds);
+      }
     } catch (err) {
       const apiErr = err as ApiError;
       setError(apiErr.error || 'Failed to change status.');
@@ -200,9 +215,15 @@ export default function DriveTimeTrackerScreen() {
     setError('');
 
     try {
-      await api.authPost('/drive-time/stop', {});
-      // Refresh to get final state
-      await fetchSession();
+      const res = await api.authPostQueued('/drive-time/stop', {});
+      if (isQueued(res)) {
+        // Optimistically mark inactive so the UI reflects the stop. Server
+        // will confirm + return final timings on reconnect drain.
+        setSession(prev => prev ? { ...prev, is_active: false } : prev);
+      } else {
+        // Refresh to get final state
+        await fetchSession();
+      }
     } catch (err) {
       const apiErr = err as ApiError;
       setError(apiErr.error || 'Failed to stop session.');

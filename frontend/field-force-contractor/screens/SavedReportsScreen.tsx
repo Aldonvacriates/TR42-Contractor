@@ -138,7 +138,8 @@ export const SavedReportsScreen: FC = () => {
         setError(null)
 
         try {
-            const data = await api.authGet<SavedReport[]>('/api/ai/reports')
+            // Cached so the user can review past reports while offline.
+            const data = await api.authCachedGet<SavedReport[]>('/api/ai/reports')
             setReports(data)
         } catch (e: any) {
             setError('Could not load reports. Pull down to retry.')

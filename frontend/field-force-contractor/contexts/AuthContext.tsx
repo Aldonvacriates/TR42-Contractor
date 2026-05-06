@@ -12,6 +12,7 @@ import React, {
 import { getToken, saveToken, deleteToken } from '../utils/secureStorage';
 import { registerAuthFailureHandler } from '../utils/api';
 import type { UserInfo } from '../utils/api';
+import { resetDb } from '../utils/db';
 
 // ── Types ──────────────────────────────────────────────────────
 
@@ -92,6 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await deleteToken();
     setToken(null);
     setUser(null);
+    // Wipe the offline cache + outbox so the next user on this device doesn't
+    // inherit the previous user's queued submissions or cached responses.
+    try {
+      await resetDb();
+    } catch {
+      // DB may not be initialised yet — safe to ignore.
+    }
   };
 
   return (

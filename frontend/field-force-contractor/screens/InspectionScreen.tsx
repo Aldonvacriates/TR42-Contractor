@@ -99,9 +99,10 @@ export default function InspectionScreen() {
         }
       }
 
-      // Step 2 — load the checklist template
+      // Step 2 — load the checklist template (cached so it works offline once
+      // it's been fetched at least once on this device).
       try {
-        const data = await api.authGet<ChecklistTemplate>('/inspections/checklist');
+        const data = await api.authCachedGet<ChecklistTemplate>('/inspections/checklist');
         setTemplate(data);
         if (data.sections.length > 0) {
           setExpandedId(data.sections[0].id);
@@ -143,7 +144,9 @@ export default function InspectionScreen() {
     setSubmitError('');
 
     try {
-      await api.authPost('/inspections/submit', {
+      // Queued: if we're offline, the submission lands in the SQLite outbox
+      // and replays on reconnect. Either way the user proceeds into the app.
+      await api.authPostQueued('/inspections/submit', {
         template_id: template.id,
         skipped: true,
       });
@@ -163,7 +166,7 @@ export default function InspectionScreen() {
     setSubmitError('');
 
     try {
-      await api.authPost('/inspections/submit', {
+      await api.authPostQueued('/inspections/submit', {
         template_id: template.id,
         no_issues_found: true,
       });
@@ -190,7 +193,7 @@ export default function InspectionScreen() {
     }));
 
     try {
-      await api.authPost('/inspections/submit', {
+      await api.authPostQueued('/inspections/submit', {
         template_id: template.id,
         no_issues_found: false,
         results,
