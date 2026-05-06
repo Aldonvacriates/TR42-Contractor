@@ -38,6 +38,20 @@ async function openDb(): Promise<SQLite.SQLiteDatabase> {
       );
 
       CREATE INDEX IF NOT EXISTS idx_outbox_created_at ON outbox (created_at);
+
+      CREATE TABLE IF NOT EXISTS photo_outbox (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticket_id       TEXT NOT NULL,
+        file_uri        TEXT NOT NULL,
+        submission_uuid TEXT NOT NULL UNIQUE,
+        latitude        REAL,
+        longitude       REAL,
+        created_at      INTEGER NOT NULL,
+        retries         INTEGER NOT NULL DEFAULT 0,
+        last_error      TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_photo_outbox_created_at ON photo_outbox (created_at);
     `);
 
     _db = db;
@@ -58,5 +72,10 @@ export async function resetDb(): Promise<void> {
   await db.execAsync(`
     DELETE FROM cache;
     DELETE FROM outbox;
+    DELETE FROM photo_outbox;
   `);
+  // Wipe the on-disk pending photo files too so a new session can't inherit
+  // images from the prior user. Imported lazily to avoid a circular import.
+  const { purgePendingPhotosDir } = await import('./photoOutbox');
+  await purgePendingPhotosDir();
 }
