@@ -1,15 +1,27 @@
 """
-seed_dev.py — Full dev reset + re-seed in one command.
+seed_dev.py — Insert demo data into a dev database.
 
-Wipes all app data (keeps the schema), then inserts:
-  • 1 vendor user  (manager / admin)
-  • 1 contractor   (aldo / the logged-in demo user)
+After the May-2026 shared-DB drop-tables incident, this script no longer
+wipes existing data. The previous `wipe()` function (which ran a TRUNCATE
+on auth_users CASCADE) was REMOVED entirely. The script now only INSERTs.
+
+If you need a clean slate locally, delete the SQLite file
+(`backend/instance/app.db`) and let `db.create_all()` recreate the schema
+on the next Flask boot.
+
+Inserts (idempotency not guaranteed — re-running may create duplicates or
+fail on unique constraints; that's expected, just clear local data first):
+  • 1 vendor admin user  (vendor / login)
+  • 1 vendor company record
+  • 1 contractor user    (aldo / the logged-in demo user)
   • Truck Pre-Trip Inspection template (6 sections, 30 items)
   • Today's drive-time session with realistic log segments
-  • 3 sample tickets
 
-Usage (from the backend/ directory, with Flask running or not):
+Usage (from the backend/ directory, against LOCAL SQLite only):
     python seed_dev.py
+
+Running this against the shared Supabase is blocked by the safety guard at
+the bottom of the file. Override only with team sign-off.
 
 Login creds after seeding:
     username : aldo        password : 123456
@@ -24,11 +36,9 @@ from werkzeug.security import generate_password_hash
 from app import create_app
 from app.models import (
     db,
-    Auth_users, Contractors, Vendors,
-    InspectionTemplates, InspectionSections, InspectionItems, Inspections, InspectionResults,
+    AuthUser, Contractor, Vendor,
+    InspectionTemplate, InspectionSection, InspectionItem,
     DutySessions, DutyLogs,
-    Tickets, Work_orders,
-    AiInspectionReports,
 )
 
 import os
@@ -97,114 +107,122 @@ def mins_ago(m):
     return now_utc() - timedelta(minutes=m)
 
 
-# ── Wipe ──────────────────────────────────────────────────────────────────────
-
-def wipe(session):
-    """Truncate all app tables, resetting sequences so IDs start at 1."""
-    print('Wiping existing data...')
-    session.execute(db.text(
-        'TRUNCATE TABLE auth_users RESTART IDENTITY CASCADE'
-    ))
-    session.commit()
-    print('  [OK] All rows cleared')
-
-
 # ── Users ─────────────────────────────────────────────────────────────────────
 
 def seed_users(session):
     print('Seeding users...')
     pw = generate_password_hash('123456')
 
-    # Defer FK checks so self-referential created_by resolves at commit time
-    try:
-        session.execute(db.text(
-            'ALTER TABLE auth_users ALTER CONSTRAINT auth_users_created_by_fkey '
-            'DEFERRABLE INITIALLY DEFERRED'
-        ))
-        session.commit()
-    except Exception:
-        session.rollback()
-
-    # Vendor / manager user (self-referential created_by handled below)
-    vendor_auth = Auth_users(
+    # Vendor admin user. AuthUser.created_by is nullable so we can create the
+    # very first user without an audit trail, then patch it to self-reference.
+    vendor_auth = AuthUser(
         email='vendor@tr42.com',
         username='vendor',
-        password=pw,
-        role='vendor',
+        password_hash=pw,
+        user_type='vendor',
         is_active=True,
-        created_by=1,   # will patch after flush
+        first_name='Jonathan',
+        last_name='Manager',
+        created_at=now_utc(),
     )
     session.add(vendor_auth)
     session.flush()
-    vendor_auth.created_by = vendor_auth.id   # self-reference
+    vendor_auth.created_by = vendor_auth.id   # self-reference for audit trail
 
-    vendor = Vendors(
-        id=vendor_auth.id,
-        first_name='Jonathan',
-        last_name='Manager',
+    # Vendor company record (separate from the auth user).
+    vendor = Vendor(
+        company_name='TR42 Logistics',
+        company_code='TR42',
+        primary_contact_name='Jonathan Manager',
+        company_email='ops@tr42.com',
+        company_phone='555-100-2000',
+        status='active',
+        onboarding=False,
+        compliance_status='compliant',
+        description='Demo vendor company for local development.',
+        vendor_code='V-001',
+        created_by=vendor_auth.id,
+        updated_by=vendor_auth.id,
     )
     session.add(vendor)
     session.flush()
 
-    # Contractor user
-    contractor_auth = Auth_users(
+    # Contractor auth user.
+    contractor_auth = AuthUser(
         email='aldo@tr42.com',
         username='aldo',
-        password=pw,
-        role='contractor',
+        password_hash=pw,
+        user_type='contractor',
         is_active=True,
+        first_name='Aldo',
+        last_name='Cruz',
+        contact_number='555-867-5309',
+        date_of_birth=date(1990, 4, 16),
         created_by=vendor_auth.id,
+        created_at=now_utc(),
     )
     session.add(contractor_auth)
     session.flush()
 
-    contractor = Contractors(
-        id=contractor_auth.id,
-        vendor_id=vendor.id,
-        manager_id=vendor_auth.id,
-        first_name='Aldo',
-        last_name='Cruz',
-        license_number='CDL-TX-998877',
-        expiration_date=date(2027, 6, 30),
-        contractor_type='CDL-A',
+    # Contractor profile (links auth user to contractor-specific fields).
+    contractor = Contractor(
+        employee_number='EMP-001',
+        user_id=contractor_auth.id,
+        role='driver',
         status='active',
-        tax_classification='1099',
-        contact_number='555-867-5309',
-        date_of_birth=date(1990, 4, 16),
-        address='1234 Maple St, Houston TX 77001',
+        tickets_completed=0,
+        tickets_open=0,
+        biometric_enrolled=False,
+        is_onboarded=True,
+        is_subcontractor=False,
+        is_fte=True,
+        is_licensed=True,
+        is_insured=True,
+        is_certified=True,
+        average_rating=None,
+        years_experience=5,
+        created_by=vendor_auth.id,
+        updated_by=vendor_auth.id,
     )
     session.add(contractor)
     session.commit()
 
-    print(f'  [OK] vendor  -- username: vendor   id: {vendor_auth.id}')
-    print(f'  [OK] contractor -- username: aldo  id: {contractor_auth.id}')
+    print(f'  [OK] vendor      -- username: vendor   id: {vendor_auth.id}')
+    print(f'  [OK] contractor  -- username: aldo     id: {contractor_auth.id}')
     return vendor_auth, vendor, contractor_auth, contractor
 
 
 # ── Inspection template ───────────────────────────────────────────────────────
 
-def seed_inspection_template(session):
+def seed_inspection_template(session, created_by):
     print('Seeding inspection template...')
-    template = InspectionTemplates(
+    template = InspectionTemplate(
         name='Truck Pre-Trip Inspection',
         description='Standard pre-trip vehicle inspection checklist',
+        is_active=True,
+        created_by=created_by,
+        updated_by=created_by,
     )
     session.add(template)
     session.flush()
 
     for section_name, order, items in INSPECTION_SECTIONS:
-        section = InspectionSections(
+        section = InspectionSection(
             template_id=template.id,
             name=section_name,
             display_order=order,
+            created_by=created_by,
+            updated_by=created_by,
         )
         session.add(section)
         session.flush()
         for i, label in enumerate(items, 1):
-            session.add(InspectionItems(
+            session.add(InspectionItem(
                 section_id=section.id,
                 label=label,
                 display_order=i,
+                created_by=created_by,
+                updated_by=created_by,
             ))
 
     session.commit()
@@ -257,61 +275,18 @@ def seed_drive_time(session, contractor_id):
     return session_obj
 
 
-# ── Sample tickets ────────────────────────────────────────────────────────────
-
-def seed_tickets(session, vendor_id, contractor_id):
-    print('Seeding work order + tickets...')
-
-    wo = Work_orders(
-        assigned_vendor=vendor_id,
-        created_at=now_utc() - timedelta(days=2),
-        description='Routine tanker delivery route — Houston distribution circuit',
-        due_date=date.today() + timedelta(days=3),
-        current_status='in_progress',
-        location='29.7604,-95.3698',
-        estimated_cost=2400.00,
-        estimated_duration=8.0,
-        priority='high',
-    )
-    session.add(wo)
-    session.flush()
-
-    tickets_data = [
-        ('Deliver 5000 gal diesel to Depot A',  'high',   'in_progress'),
-        ('Deliver 3000 gal unleaded to Depot B', 'medium', 'to_do'),
-        ('Return empty tanker to yard',          'low',    'to_do'),
-    ]
-
-    for desc, priority, status in tickets_data:
-        session.add(Tickets(
-            work_order_id=wo.id,
-            vendor_id=vendor_id,
-            description=desc,
-            priority=priority,
-            status=status,
-            assigned_contractor=contractor_id,
-            contractor_assigned_at=now_utc() - timedelta(hours=5),
-            task_created_at=now_utc() - timedelta(days=2),
-            estimated_quantity=5000.0,
-            unit='gallons',
-            special_requirements='No smoking within 50 ft of vehicle',
-            contractor_notes='',
-            anomaly_flag=False,
-        ))
-
-    session.commit()
-    print(f'  [OK] work order id {wo.id} — {len(tickets_data)} tickets assigned to contractor')
-
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def seed():
     with app.app_context():
-        wipe(db.session)
+        # Note: data wipe was removed after the May-2026 shared-DB incident.
+        # Seeding now only INSERTs. If you need a clean slate, drop the local
+        # SQLite file (`backend/instance/app.db`) and let db.create_all() run.
         vendor_auth, vendor, contractor_auth, contractor = seed_users(db.session)
-        seed_inspection_template(db.session)
+        seed_inspection_template(db.session, created_by=vendor_auth.id)
         seed_drive_time(db.session, contractor.id)
-        # seed_tickets(db.session, vendor.id, contractor.id)  # TODO: Fix Tickets schema mismatch on ai-assistant branch
+        # seed_tickets is intentionally absent. Tickets/Work_orders schema is
+        # still in flux on team Supabase — add back once the columns are stable.
 
         print()
         print('=' * 50)
@@ -321,4 +296,23 @@ def seed():
 
 
 if __name__ == '__main__':
+    # ── Safety guard ────────────────────────────────────────────────────────
+    # The May-2026 incident happened when seed scripts ran against the shared
+    # Render/Supabase DB. wipe() has been removed, but seeding can still
+    # create duplicate / conflicting rows on a populated shared DB and may
+    # leak demo passwords into prod. Block any non-SQLite target unless
+    # explicitly opted in.
+    db_url = os.environ.get('DATABASE_URL', '')
+    if db_url and not db_url.startswith('sqlite'):
+        if os.environ.get('ALLOW_DESTRUCTIVE_SEED') != '1':
+            print('=' * 60)
+            print('REFUSING TO RUN: DATABASE_URL points at a remote database.')
+            print()
+            print('  DATABASE_URL =', db_url.split('@')[-1])  # show host only
+            print()
+            print('To run anyway, set ALLOW_DESTRUCTIVE_SEED=1 in your env.')
+            print('Coordinate with the team lead first — see DATABASE_SAFETY.md.')
+            print('=' * 60)
+            raise SystemExit(1)
+
     seed()
