@@ -1,11 +1,11 @@
-import {FC,useState} from "react"
+import { RootStackParamList } from "@/App"
+import { ContactCard } from "@/components/ContactCard"
 import { MainFrame } from "@/components/MainFrame"
 import { SearchBar } from "@/components/SearchBar"
-import { ContactCard } from "@/components/ContactCard"
-import { useNavigation } from "@react-navigation/native"
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from "@/App"
 import { demoUsers } from "@/contexts/AppContext"
+import { useNavigation } from "@react-navigation/native"
+import { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { FC, useState } from "react"
 
 
 export const Contacts:FC = (props) => {
@@ -23,8 +23,8 @@ export const Contacts:FC = (props) => {
     <MainFrame header="home" headerMenu={["Menu2",["Contacts"]]} injectHeader={<Search/>}>
     
       {
-        contacts.filter(ct => (`${ct.firstName.toUpperCase()} ${ct.lastName.toUpperCase()}`).includes(nameSearch.toUpperCase())).map((item) =>{
-          return( <ContactCard key={item.userid} contactId={item.userid} phoneNumber={item.phone} name={`${item.firstName} ${ item.lastName}`}/>)
+        contacts.filter(ct => (`${ct.firstName.toUpperCase()} ${ct.lastName.toUpperCase()}`).includes(nameSearch.toUpperCase())).map((item,index) =>{
+          return( <ContactCard key={index} contactId={item.userid} phoneNumber={item.phone} name={`${item.firstName} ${ item.lastName}`}/>)
         })
       }
     
