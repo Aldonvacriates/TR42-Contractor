@@ -53,6 +53,7 @@ import { colors, spacing, fontSize, fonts } from '@/constants/theme';
 import { Header, HeaderVariant } from '@/components/Header';
 import { Menu, MenuOptions }   from '@/components/Menu';
 import { Menus }               from '@/constants/Menus';
+import { OfflineBanner }       from '@/components/OfflineBanner';
 import { AppContext } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -298,6 +299,8 @@ export const MainFrame: FC<Props> = (props) => {
           <Menu menuOptions={renderHeaderMenu} />
           {props.injectHeader}
         </View>
+
+        <OfflineBanner />
 
         <View style={{flex: 1}} {...bottomPullResponder.panHandlers}>
           <ScrollView
