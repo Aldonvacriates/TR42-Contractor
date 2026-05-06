@@ -16,7 +16,6 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 // ── Jonathan ──────────────────────────────────────
 import { screenConfig } from "./constants/ScreenConfig";
 import { AppProvider } from "./contexts/AppContext";
-import { Blank } from "./screens/Blank";
 import { Chat } from "./screens/ChatScreen";
 import { Contacts } from "./screens/ContactScreen";
 import DriveTimeTrackerScreen from "./screens/DriveTimeTrackerScreen";
@@ -51,7 +50,6 @@ export type RootStackParamList = {
 
   // ── Jonathan — App screens ───────────────────────────────────
   Home: undefined;
-  Blank: undefined;
 
   // ── Charlie — App screens ───────────────────────────────────
   Contacts: {sort?:boolean};
@@ -128,14 +126,10 @@ function RootNavigator() {
   }
 
   return (
-    <StackNavigator.Navigator
-      screenOptions={screenConfig.window} initialRouteName="SplashScreen"
-      
-    >
-          <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}          />
-           <StackNavigator.Screen name="Blank"          component={Blank}          />
-   
-          <StackNavigator.Screen name="Inspection"       component={InspectionScreen}       />
+    <StackNavigator.Navigator screenOptions={screenConfig.window} initialRouteName="SplashScreen" >
+
+          <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}             />        
+          <StackNavigator.Screen name="Inspection"       component={InspectionScreen}        />
           <StackNavigator.Screen name="Dashboard"        component={HomeScreen}              />
           <StackNavigator.Screen name="Home"             component={HomeScreen}              />
           <StackNavigator.Screen name="Contacts"         component={Contacts}                />
@@ -147,15 +141,12 @@ function RootNavigator() {
           <StackNavigator.Screen name="TaskHistory"      component={TaskHistoryScreen}       />
           <StackNavigator.Screen name="InspectionAssist" component={InspectionAssistScreen}  />
           <StackNavigator.Screen name="DriveTimeTracker" component={DriveTimeTrackerScreen}  />
-          <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />
-       
-         <StackNavigator.Screen name="Login"           component={LoginScreen}           />
+          <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />     
+          <StackNavigator.Screen name="Login"           component={LoginScreen}           />
           <StackNavigator.Screen name="OfflineLogin"    component={OfflineLoginScreen}    />
           <StackNavigator.Screen name="BiometricCheck"  component={BiometricScreen}       />
           <StackNavigator.Screen name="PasswordReset"   component={PasswordResetScreen}   />
           <StackNavigator.Screen name="OfflinePinReset" component={OfflinePinResetScreen} />
-        
-     
 
     </StackNavigator.Navigator>
   );
@@ -167,8 +158,7 @@ export default function App() {
  
   useEffect(() => {
   
-    
-    const load = async () => {
+      const load = async () => {
       const isLoaded = await LoadFonts();
       setExternalFontsLoaded(isLoaded);
     };
