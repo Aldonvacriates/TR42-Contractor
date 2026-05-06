@@ -24,7 +24,11 @@ import { SearchBar } from '@/components/SearchBar'
 import { InitID } from '@/utils/InitID'
 import { TimeFormater } from '@/utils/timeFormater'
 import { api } from '@/utils/api'
-import { refineReport as apiRefineReport, friendlyAIError } from '@/utils/aiClient'
+import {
+    refineReport as apiRefineReport,
+    streamInspectionAssist,
+    friendlyAIError,
+} from '@/utils/aiClient'
 import { RootStackParamList } from '@/App'
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -86,8 +90,11 @@ function formatReport(report: InspectionReport): string {
 }
 
 // ─── Typing indicator ─────────────────────────────────────────────────────────
+// Animated three-dot bubble. When `streamingChars` is non-zero we know a
+// streaming response is mid-flight so we add a "writing..." label next to
+// the dots, otherwise we just show dots (used for non-stream calls).
 
-const TypingIndicator: FC = () => {
+const TypingIndicator: FC<{ streamingChars?: number }> = ({ streamingChars }) => {
     const dots = [
         useRef(new Animated.Value(0.3)).current,
         useRef(new Animated.Value(0.3)).current,
@@ -118,6 +125,11 @@ const TypingIndicator: FC = () => {
                 {dots.map((d, i) => (
                     <Animated.View key={i} style={[s.typingDot, { opacity: d }]} />
                 ))}
+                {streamingChars && streamingChars > 0 ? (
+                    <Text style={s.typingLabel}>
+                        writing... {streamingChars} chars
+                    </Text>
+                ) : null}
             </View>
         </View>
     )
@@ -200,10 +212,16 @@ export const InspectionAssistScreen: FC = () => {
     const navigation                           = useNavigation<Nav>()
     const [messages, setMessages]              = useState<ChatMessage[]>([])
     const [loading, setLoading]                = useState(false)
+    const [streamingChars, setStreamingChars]  = useState(0)
     const [suggestionsVisible, setSuggestions] = useState(true)
     const [refineMsgId, setRefineMsgId]        = useState<string | null>(null)
     const [refineFeedback, setRefineFeedback]  = useState('')
     const scrollRef                            = useRef<ScrollView>(null)
+    const abortRef                             = useRef<(() => void) | null>(null)
+
+    // Cancel any in-flight stream on unmount so the user can navigate away
+    // without leaving the request hanging.
+    useEffect(() => () => { abortRef.current?.() }, [])
 
     const scroll = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
 
@@ -217,28 +235,55 @@ export const InspectionAssistScreen: FC = () => {
         }])
     }
 
-    const handleSend = async (notes: string) => {
+    const handleSend = (notes: string) => {
         if (!notes.trim() || loading) return
         setSuggestions(false)
         addMessage(notes, 'sent')
         setLoading(true)
+        setStreamingChars(0)
         scroll()
 
-        try {
-            const report = await api.authPost<InspectionReport>(
-                '/api/ai/inspection-assist',
-                { notes },
-            )
-            addMessage(formatReport(report), 'received', report)
-        } catch (e: any) {
-            addMessage(
-                `Sorry, I couldn't generate a report. ${friendlyAIError(e)}`,
-                'received',
-            )
-        } finally {
-            setLoading(false)
-            scroll()
-        }
+        // Stream the response so first bytes start coming back faster (the
+        // gunicorn round-trip on Render can take 20s+ for non-stream calls).
+        // We don't render the partial JSON to the user — it's not useful to
+        // see "{\"title\":\"" appearing character by character — but we do
+        // surface a live char counter so the typing indicator feels alive.
+        abortRef.current = streamInspectionAssist(notes, {
+            onChunk: (chunk) => {
+                setStreamingChars(prev => prev + chunk.length)
+            },
+            onDone: (full) => {
+                abortRef.current = null
+                setLoading(false)
+                setStreamingChars(0)
+                try {
+                    // Backend prompt asks for a JSON object; strip any markdown
+                    // fences a model might wrap around it before parsing.
+                    const cleaned = full
+                        .trim()
+                        .replace(/^```(?:json)?\s*/i, '')
+                        .replace(/\s*```$/, '')
+                    const report = JSON.parse(cleaned) as InspectionReport
+                    addMessage(formatReport(report), 'received', report)
+                } catch {
+                    addMessage(
+                        "Sorry, I couldn't read that response. Try again.",
+                        'received',
+                    )
+                }
+                scroll()
+            },
+            onError: (err) => {
+                abortRef.current = null
+                setLoading(false)
+                setStreamingChars(0)
+                addMessage(
+                    `Sorry, I couldn't generate a report. ${friendlyAIError(err)}`,
+                    'received',
+                )
+                scroll()
+            },
+        })
     }
 
     const submitRefine = async () => {
@@ -382,7 +427,7 @@ export const InspectionAssistScreen: FC = () => {
                     })}
 
                     {/* ── Typing indicator ── */}
-                    {loading && <TypingIndicator />}
+                    {loading && <TypingIndicator streamingChars={streamingChars} />}
 
                 </ScrollView>
             </MainFrame>
@@ -738,5 +783,11 @@ const s = StyleSheet.create({
         height:          6,
         borderRadius:    3,
         backgroundColor: 'rgba(255,255,255,0.7)',
+    },
+    typingLabel: {
+        marginLeft: 6,
+        fontFamily: 'poppins-regular',
+        fontSize:   11,
+        color:      'rgba(255,255,255,0.45)',
     },
 })

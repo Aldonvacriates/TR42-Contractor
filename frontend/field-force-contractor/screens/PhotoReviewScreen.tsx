@@ -48,6 +48,18 @@ function severityColor(s: PhotoAnalysis['severity']) {
     }
 }
 
+// Compact label for the corner badge on thumbnails. Full word looks crowded
+// in a 31%-wide tile, so we abbreviate medium and treat 'none' as "OK".
+function severityShort(s: PhotoAnalysis['severity']) {
+    switch (s) {
+        case 'high':   return 'HIGH'
+        case 'medium': return 'MED'
+        case 'low':    return 'LOW'
+        case 'none':
+        default:       return 'OK'
+    }
+}
+
 function ticketLabel(t: AssignedTicketSummary) {
     const short = (t.description || '').split('\n')[0].slice(0, 50)
     return short ? `${short}${t.description.length > 50 ? '...' : ''}` : `Ticket ${t.id.slice(0, 8)}`
@@ -218,7 +230,14 @@ export const PhotoReviewScreen: FC = () => {
                 </TouchableOpacity>
 
                 {/* Photo grid */}
-                <Text style={[s.sectionLabel, { marginTop: 16 }]}>Photos</Text>
+                <View style={s.photosHeader}>
+                    <Text style={[s.sectionLabel, { marginTop: 0 }]}>Photos</Text>
+                    {photos.length > 0 && (
+                        <Text style={s.analyzedCount}>
+                            {Object.keys(analyses).length}/{photos.length} analyzed
+                        </Text>
+                    )}
+                </View>
                 {loadingPhotos ? (
                     <View style={s.center}>
                         <ActivityIndicator size="large" color="#a78bfa" />
@@ -237,23 +256,35 @@ export const PhotoReviewScreen: FC = () => {
                     </View>
                 ) : (
                     <View style={s.grid}>
-                        {photos.map(p => (
-                            <TouchableOpacity
-                                key={p.id}
-                                style={s.gridItem}
-                                onPress={() => setFocusedPhoto(p)}
-                                activeOpacity={0.8}
-                            >
-                                <AuthedThumbnail photoId={p.id} />
-                                {analyses[p.id] && (
-                                    <View
-                                        style={[s.severityDot, {
-                                            backgroundColor: severityColor(analyses[p.id].severity).fg,
-                                        }]}
-                                    />
-                                )}
-                            </TouchableOpacity>
-                        ))}
+                        {photos.map(p => {
+                            const a  = analyses[p.id]
+                            const sc = a ? severityColor(a.severity) : null
+                            return (
+                                <TouchableOpacity
+                                    key={p.id}
+                                    style={[
+                                        s.gridItem,
+                                        sc && { borderColor: sc.fg, borderWidth: 2 },
+                                    ]}
+                                    onPress={() => setFocusedPhoto(p)}
+                                    activeOpacity={0.8}
+                                >
+                                    <AuthedThumbnail photoId={p.id} />
+                                    {a && sc && (
+                                        <View style={[s.severityBadgeCorner, { backgroundColor: sc.fg }]}>
+                                            <Ionicons
+                                                name={a.severity === 'none' ? 'checkmark' : 'warning'}
+                                                size={9}
+                                                color="#0a0a0a"
+                                            />
+                                            <Text style={s.severityBadgeCornerText}>
+                                                {severityShort(a.severity)}
+                                            </Text>
+                                        </View>
+                                    )}
+                                </TouchableOpacity>
+                            )
+                        })}
                     </View>
                 )}
 
@@ -490,15 +521,40 @@ const s = StyleSheet.create({
     },
     thumb:         { width: '100%', height: '100%' },
     thumbFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center' },
-    severityDot: {
-        position:     'absolute',
-        top:          6,
-        right:        6,
-        width:        10,
-        height:       10,
-        borderRadius: 5,
-        borderWidth:  1,
-        borderColor:  '#0a0a0a',
+
+    // Corner badge that overlays an analyzed thumbnail. Pairs with the
+    // colored 2px border on the gridItem so the severity reads at a glance.
+    severityBadgeCorner: {
+        position:          'absolute',
+        top:               4,
+        right:             4,
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               2,
+        paddingHorizontal: 5,
+        paddingVertical:   2,
+        borderRadius:      6,
+        borderWidth:       1,
+        borderColor:       '#0a0a0a',
+    },
+    severityBadgeCornerText: {
+        fontFamily:    'poppins-bold',
+        fontSize:      9,
+        color:         '#0a0a0a',
+        letterSpacing: 0.3,
+    },
+
+    photosHeader: {
+        flexDirection:  'row',
+        alignItems:     'center',
+        justifyContent: 'space-between',
+        marginTop:      16,
+        marginBottom:   4,
+    },
+    analyzedCount: {
+        fontFamily: 'poppins-regular',
+        fontSize:   11,
+        color:      'rgba(167,139,250,0.7)',
     },
 
     center: { padding: 32, alignItems: 'center' },
