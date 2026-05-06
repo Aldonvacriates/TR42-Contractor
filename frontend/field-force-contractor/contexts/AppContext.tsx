@@ -69,8 +69,8 @@ export const AppProvider = ({children} : {children:ReactNode}) =>{
    const [mount,setMounted] = useState(false);
    const [reverseStack,setReverseStack] = useState(false);
    const [devMode,setDevMode] = useState(false);
-   const [userInfo,setUserInfo] = useState(getUser(0)); 
-   const [client,setClient] = useState<userTable | boolean>(demoClient(1));
+   const [userInfo,setUserInfo] = useState(getUser("0")); 
+   const [client,setClient] = useState<userTable | boolean>(demoClient("1"));
    
     return(
 
