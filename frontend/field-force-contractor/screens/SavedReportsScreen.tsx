@@ -182,6 +182,7 @@ export const SavedReportsScreen: FC = () => {
                     data={reports}
                     keyExtractor={item => String(item.id)}
                     renderItem={({ item }) => <ReportCard report={item} />}
+                    style={s.flatList}
                     contentContainerStyle={s.list}
                     showsVerticalScrollIndicator={false}
                     ListEmptyComponent={<EmptyState />}
@@ -196,7 +197,11 @@ export const SavedReportsScreen: FC = () => {
 
 const s = StyleSheet.create({
 
-    list: { padding: 16, gap: 12, paddingBottom: 32, width: '100%' },
+    // FlatList itself needs alignSelf:'stretch' to fill MainFrame's centered
+    // ScrollView. Without this the list collapses to its content's natural
+    // width, which then makes the cards (width:100%) collapse along with it.
+    flatList: { alignSelf: 'stretch', width: '100%' },
+    list:     { padding: 16, gap: 12, paddingBottom: 32 },
 
     center: {
         flex: 1,
