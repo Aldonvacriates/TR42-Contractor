@@ -21,7 +21,7 @@ import { api } from '@/utils/api'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SavedReport = {
-    id: number
+    id: string
     title: string
     priority: string
     category: string
@@ -61,7 +61,10 @@ const ReportCard: FC<{ report: SavedReport }> = ({ report }) => {
             {/* ── Header row ── */}
             <View style={s.cardHeader}>
                 <View style={{ flex: 1, gap: 6 }}>
-                    <Text style={s.cardTitle} numberOfLines={expanded ? undefined : 1}>
+                    {/* Title is never truncated. The card defaults to expanded
+                        anyway and the user explicitly asked to see the whole
+                        title at all times. */}
+                    <Text style={s.cardTitle}>
                         {report.title}
                     </Text>
                     <View style={s.cardMeta}>

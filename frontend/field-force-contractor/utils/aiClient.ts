@@ -68,9 +68,9 @@ export interface ChatReply {
 }
 
 export interface SavedReport extends InspectionReport {
-  id:            number;
+  id:            string;
   contractor_id: string;
-  inspection_id: number | null;
+  inspection_id: string | null;
   raw_notes:     string | null;
   created_at:    string;
 }

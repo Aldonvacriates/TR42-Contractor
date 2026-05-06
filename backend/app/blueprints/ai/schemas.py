@@ -65,14 +65,16 @@ class SaveReportSchema(Schema):
     description         = fields.Str(required=True)
     recommended_actions = fields.List(fields.Str(), required=True)
     raw_notes           = fields.Str(required=False, load_default=None)
-    inspection_id       = fields.Int(required=False, load_default=None)
+    # inspection_id is a text/UUID FK to inspection.id (not an int) since the
+    # full schema sync moved every PK to text. Optional.
+    inspection_id       = fields.Str(required=False, load_default=None)
 
 
 class AiReportSchema(Schema):
     """Shape of a saved report returned to the client."""
-    id                  = fields.Int()
+    id                  = fields.Str()
     contractor_id       = fields.Str()
-    inspection_id       = fields.Int(allow_none=True)
+    inspection_id       = fields.Str(allow_none=True)
     title               = fields.Str()
     priority            = fields.Str()
     category            = fields.Str()
