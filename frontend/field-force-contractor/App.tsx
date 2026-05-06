@@ -12,6 +12,7 @@ import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { NetworkProvider } from "./contexts/NetworkContext";
 
 // ── Jonathan ──────────────────────────────────────
 import { screenConfig } from "./constants/ScreenConfig";
@@ -182,9 +183,11 @@ export default function App() {
     <AppProvider>
       <ThemeProvider>
         <AuthProvider>
-          <NavigationContainer>
-            <RootNavigator />
-          </NavigationContainer>
+          <NetworkProvider>
+            <NavigationContainer>
+              <RootNavigator />
+            </NavigationContainer>
+          </NetworkProvider>
         </AuthProvider>
       </ThemeProvider>
     </AppProvider>
