@@ -4,22 +4,26 @@ All routes use @handle_ai_errors so the response shape is consistent:
     success: regular JSON or text/event-stream
     failure: { "error": "...", "code": "AI_*" }
 
-Routes:
-    POST   /api/ai/inspection-assist  - convert raw notes to structured report (one-shot)
-    POST   /api/ai/inspection-assist/stream - same, but streamed via SSE
-    POST   /api/ai/refine-report      - regenerate a report given user feedback
-    POST   /api/ai/analyze-photo      - run Claude vision against a ticket photo
-    POST   /api/ai/chat               - stateless chat assistant (frontend keeps history)
-    POST   /api/ai/save-report        - persist a report to the local DB
-    GET    /api/ai/reports            - list saved reports for the caller
+Provider routing
+----------------
+The active LLM provider is picked by the AI_PROVIDER env var (default: gemini).
+Anthropic stays available as an instant fallback if Gemini misbehaves; just
+flip the env var and redeploy. See providers.py for selection logic.
+
+Routes
+------
+    POST   /api/ai/inspection-assist         one-shot structured report
+    POST   /api/ai/inspection-assist/stream  streamed via SSE
+    POST   /api/ai/refine-report             revise a report given feedback
+    POST   /api/ai/analyze-photo             vision against a ticket photo
+    POST   /api/ai/chat                      stateless chat assistant
+    POST   /api/ai/save-report               persist a report to local DB
+    GET    /api/ai/reports                   list saved reports for the caller
 """
-import base64
-import io
 import json
 import logging
-import os
+import re
 
-import anthropic
 from flask import Response, jsonify, request, stream_with_context
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -29,12 +33,14 @@ from app.util.auth import token_required
 from . import ai_bp
 from .errors import (
     AI_BAD_REQUEST,
+    AI_BAD_RESPONSE,
+    AI_INTERNAL,
     AI_NOT_FOUND,
     AI_UNAUTHORIZED,
     AIError,
     handle_ai_errors,
-    require_api_key,
 )
+from .providers import get_provider
 from .schemas import (
     ai_report_schema,
     ai_reports_schema,
@@ -46,26 +52,10 @@ from .schemas import (
 
 log = logging.getLogger(__name__)
 
-# ── Anthropic client ─────────────────────────────────────────────────────────
-# Lazy-init so the module imports even when ANTHROPIC_API_KEY isn't set
-# (lets the rest of the backend boot in offline / no-AI environments).
-_client = None
-
-def _get_client():
-    global _client
-    if _client is None:
-        require_api_key()
-        _client = anthropic.Anthropic(api_key=os.environ.get('ANTHROPIC_API_KEY'))
-    return _client
-
-
-# Default model. Haiku 4.5 is fast, cheap, and supports vision.
-_MODEL = 'claude-haiku-4-5'
 
 # ── Prompts ──────────────────────────────────────────────────────────────────
-# All system prompts get prompt-cached so repeat requests amortise the cost
-# of sending the prompt text every time. The cache TTL is 5 minutes by
-# default; the AI assistant chat warms it on the first turn.
+# All system prompts go through the provider's caching mechanism (Anthropic's
+# cache_control, Gemini's auto cache). Same prompts work across providers.
 
 _INSPECTION_PROMPT = """You are an AI assistant for field contractors.
 Convert raw contractor field notes into a structured inspection report.
@@ -76,7 +66,8 @@ Respond with ONLY valid JSON using exactly these fields:
 - description: clear professional description of the issue (string)
 - recommended_actions: specific action items to address the issue (array of strings)
 
-Do not include any text outside the JSON object."""
+Do not include any text outside the JSON object. Do not wrap the JSON in
+markdown code fences."""
 
 
 _REFINE_PROMPT = """You are revising an existing inspection report based on
@@ -89,7 +80,7 @@ contractor feedback. Keep the same JSON shape:
 
 Apply the contractor's feedback faithfully. Do not invent facts that aren't
 in the original report or the feedback. Respond with ONLY the revised JSON
-object and nothing else."""
+object and nothing else. Do not wrap the JSON in markdown code fences."""
 
 
 _PHOTO_PROMPT = """You are a job-site safety inspector reviewing a contractor's
@@ -102,7 +93,8 @@ Respond with ONLY valid JSON using exactly these fields:
 - concerns: list of specific issues found (array of strings, empty if none)
 - recommendations: specific actions to address the concerns (array of strings, empty if none)
 
-Do not include any text outside the JSON object."""
+Do not include any text outside the JSON object. Do not wrap the JSON in
+markdown code fences."""
 
 
 _CHAT_PROMPT = """You are an AI assistant for oil-services field contractors
@@ -114,20 +106,32 @@ right screen instead of guessing. If asked anything outside this scope,
 say you focus on field-work topics."""
 
 
-def _system_block(text: str):
-    """Wrap a prompt string in the Anthropic format with cache control on."""
-    return [{
-        'type': 'text',
-        'text': text,
-        'cache_control': {'type': 'ephemeral'},
-    }]
-
-
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _extract_text(message) -> str:
-    """Pull the first text block out of an Anthropic Message response."""
-    return next((b.text for b in message.content if b.type == 'text'), '')
+# Some providers (Gemini especially) sometimes wrap JSON in ``` fences even
+# when told not to. Strip them defensively so callers always get clean JSON.
+_FENCE_RE = re.compile(r'^\s*```(?:json)?\s*|\s*```\s*$', re.IGNORECASE)
+
+def _strip_fences(text: str) -> str:
+    """Remove leading/trailing ``` or ```json fences, if any."""
+    if not text:
+        return text
+    out = _FENCE_RE.sub('', text.strip())
+    return out.strip()
+
+
+def _parse_json_strict(text: str):
+    """Parse JSON, surfacing AI_BAD_RESPONSE if the upstream gave us garbage."""
+    cleaned = _strip_fences(text)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        log.warning('AI returned non-JSON response: %s | text=%r', e, cleaned[:200])
+        raise AIError(
+            AI_BAD_RESPONSE,
+            'AI returned an unexpected response format',
+            502,
+        )
 
 
 def _resolve_contractor():
@@ -148,8 +152,7 @@ def _resolve_contractor():
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/ai/inspection-assist
-# Converts raw contractor field notes into a structured report. One-shot
-# (no streaming). Use /inspection-assist/stream for the streaming variant.
+# Converts raw contractor field notes into a structured report.
 # ─────────────────────────────────────────────────────────────────────────────
 @ai_bp.route('/inspection-assist', methods=['POST'])
 @token_required
@@ -160,27 +163,23 @@ def inspection_assist():
     if not notes:
         raise AIError(AI_BAD_REQUEST, 'notes cannot be empty', 400)
 
-    response = _get_client().messages.create(
-        model=_MODEL,
-        max_tokens=1024,
-        system=_system_block(_INSPECTION_PROMPT),
+    text = get_provider().generate(
         messages=[{
             'role': 'user',
             'content': f'Convert these field notes into a structured report:\n\n{notes}',
         }],
+        system=_INSPECTION_PROMPT,
+        max_tokens=1024,
     )
-    report = json.loads(_extract_text(response))
-    return jsonify(report), 200
+    return jsonify(_parse_json_strict(text)), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/ai/inspection-assist/stream
-# Same as above but streams the response as Server-Sent Events. The body of
-# the stream is the JSON object being constructed token-by-token. Frontend
-# accumulates the chunks and parses the final JSON when the stream closes.
+# Same as above but streams the response as Server Sent Events.
 #
 # Stream protocol:
-#   data: <chunk text>\n\n        ...zero or more times...
+#   data: <chunk>\n\n        ...repeated as Claude/Gemini emits text...
 #   event: done\ndata: {}\n\n     terminator
 # ─────────────────────────────────────────────────────────────────────────────
 @ai_bp.route('/inspection-assist/stream', methods=['POST'])
@@ -192,27 +191,23 @@ def inspection_assist_stream():
     if not notes:
         raise AIError(AI_BAD_REQUEST, 'notes cannot be empty', 400)
 
-    client = _get_client()
+    provider = get_provider()  # raise here if not configured, before opening the stream
 
     @stream_with_context
     def generate():
         try:
-            with client.messages.stream(
-                model=_MODEL,
-                max_tokens=1024,
-                system=_system_block(_INSPECTION_PROMPT),
+            for chunk in provider.stream(
                 messages=[{
                     'role': 'user',
                     'content': f'Convert these field notes into a structured report:\n\n{notes}',
                 }],
-            ) as stream:
-                for chunk in stream.text_stream:
-                    # SSE framing: each event is "data: <payload>\n\n"
-                    # JSON-encode the chunk so newlines in it don't break the
-                    # SSE framing.
-                    yield f'data: {json.dumps({"chunk": chunk})}\n\n'
+                system=_INSPECTION_PROMPT,
+                max_tokens=1024,
+            ):
+                # JSON-encode the chunk so newlines/quotes don't break SSE framing.
+                yield f'data: {json.dumps({"chunk": chunk})}\n\n'
             yield 'event: done\ndata: {}\n\n'
-        except anthropic.APIError as e:
+        except Exception as e:
             log.exception('Stream failed')
             yield f'event: error\ndata: {json.dumps({"error": str(e)})}\n\n'
 
@@ -220,7 +215,7 @@ def inspection_assist_stream():
         generate(),
         mimetype='text/event-stream',
         headers={
-            'Cache-Control': 'no-cache',
+            'Cache-Control':     'no-cache',
             'X-Accel-Buffering': 'no',  # disable nginx buffering if proxied
         },
     )
@@ -229,7 +224,6 @@ def inspection_assist_stream():
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/ai/refine-report
 # Take an existing structured report + user feedback, return a revised report.
-# Same JSON shape as inspection-assist output.
 # ─────────────────────────────────────────────────────────────────────────────
 @ai_bp.route('/refine-report', methods=['POST'])
 @token_required
@@ -240,28 +234,25 @@ def refine_report():
     if not feedback:
         raise AIError(AI_BAD_REQUEST, 'feedback cannot be empty', 400)
 
-    original_json = json.dumps(data['report'], indent=2)
     user_message = (
-        f'Original report:\n{original_json}\n\n'
+        f'Original report:\n{json.dumps(data["report"], indent=2)}\n\n'
         f'Contractor feedback:\n{feedback}\n\n'
         f'Apply the feedback and return the revised JSON.'
     )
 
-    response = _get_client().messages.create(
-        model=_MODEL,
-        max_tokens=1024,
-        system=_system_block(_REFINE_PROMPT),
+    text = get_provider().generate(
         messages=[{'role': 'user', 'content': user_message}],
+        system=_REFINE_PROMPT,
+        max_tokens=1024,
     )
-    return jsonify(json.loads(_extract_text(response))), 200
+    return jsonify(_parse_json_strict(text)), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/ai/analyze-photo
-# Run Claude vision against a ticket photo the caller is allowed to see.
+# Run vision against a ticket photo the caller is allowed to see.
 # Body: { "photo_id": "<uuid>" }
-# The bytes already live in ticket_photo.photo_content (bytea), so we just
-# base64 them into the vision message.
+# Bytes already live in ticket_photo.photo_content (bytea), no extra round-trips.
 # ─────────────────────────────────────────────────────────────────────────────
 @ai_bp.route('/analyze-photo', methods=['POST'])
 @token_required
@@ -288,47 +279,22 @@ def analyze_photo():
     if not photo:
         # 404 on miss OR auth failure so we don't leak whether the photo exists.
         raise AIError(AI_NOT_FOUND, 'photo not found', 404)
-
     if not photo.photo_content:
         raise AIError(AI_BAD_REQUEST, 'photo has no content stored', 400)
 
-    # Default to JPEG since that's what the photos route re-encodes to. The
-    # mime_type column isn't on the table per the team schema, so we infer.
-    media_type = 'image/jpeg'
-    encoded = base64.standard_b64encode(photo.photo_content).decode('ascii')
-
-    response = _get_client().messages.create(
-        model=_MODEL,
+    text = get_provider().generate_with_image(
+        messages=[{'role': 'user', 'content': 'Analyze this job-site photo.'}],
+        system=_PHOTO_PROMPT,
+        image_bytes=photo.photo_content,
+        mime_type='image/jpeg',
         max_tokens=1024,
-        system=_system_block(_PHOTO_PROMPT),
-        messages=[{
-            'role': 'user',
-            'content': [
-                {
-                    'type': 'image',
-                    'source': {
-                        'type': 'base64',
-                        'media_type': media_type,
-                        'data': encoded,
-                    },
-                },
-                {'type': 'text', 'text': 'Analyze this job-site photo.'},
-            ],
-        }],
     )
-    return jsonify(json.loads(_extract_text(response))), 200
+    return jsonify(_parse_json_strict(text)), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/ai/chat
-# Stateless chat assistant. The frontend keeps the conversation history and
-# sends it with each request. Backend just forwards to Claude with the
-# system prompt cached.
-#
-# Body shape:
-#   { "messages": [ {"role": "user"|"assistant", "content": "..."}, ... ] }
-# Returns:
-#   { "reply": "<assistant text>" }
+# Stateless chat assistant. Frontend keeps the conversation history.
 # ─────────────────────────────────────────────────────────────────────────────
 @ai_bp.route('/chat', methods=['POST'])
 @token_required
@@ -341,19 +307,17 @@ def chat():
     if messages[-1]['role'] != 'user':
         raise AIError(AI_BAD_REQUEST, 'last message must be from the user', 400)
 
-    response = _get_client().messages.create(
-        model=_MODEL,
-        max_tokens=1024,
-        system=_system_block(_CHAT_PROMPT),
+    reply = get_provider().generate(
         messages=messages,
+        system=_CHAT_PROMPT,
+        max_tokens=1024,
     )
-    return jsonify({'reply': _extract_text(response)}), 200
+    return jsonify({'reply': reply}), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # POST /api/ai/save-report
-# Persists an AI-generated report to the local DB. Frontend sends the
-# structured object it received from /inspection-assist or /refine-report.
+# Persists an AI-generated report to the local DB.
 # ─────────────────────────────────────────────────────────────────────────────
 @ai_bp.route('/save-report', methods=['POST'])
 @token_required
@@ -377,7 +341,7 @@ def save_report():
     except SQLAlchemyError as e:
         db.session.rollback()
         log.exception('Failed to save AI report')
-        raise AIError('AI_INTERNAL', f'Could not save report: {e}', 500)
+        raise AIError(AI_INTERNAL, f'Could not save report: {e}', 500)
 
     result = ai_report_schema.dump(report)
     result['recommended_actions'] = json.loads(report.recommended_actions)
@@ -386,8 +350,7 @@ def save_report():
 
 # ─────────────────────────────────────────────────────────────────────────────
 # GET /api/ai/reports
-# Returns all saved AI inspection reports for the logged-in contractor,
-# newest first.
+# Returns all saved AI inspection reports for the logged-in contractor.
 # ─────────────────────────────────────────────────────────────────────────────
 @ai_bp.route('/reports', methods=['GET'])
 @token_required
