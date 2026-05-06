@@ -1,4 +1,3 @@
-import { InitID } from "@/utils/InitID"
 import { createContext, ReactNode, useState } from "react"
 
 
@@ -16,7 +15,7 @@ export type userTable = {
 //Demo User Data
 export const demoUsers:userTable[] = [
  {
-    userid:InitID.getId(),
+    userid:"0",
     firstName:"John",
     lastName:"Doe",
     phone:"555-555-5555",
@@ -24,7 +23,7 @@ export const demoUsers:userTable[] = [
     vendorid:"1"
  },
  {
-    userid:InitID.getId(),
+    userid:"1",
     firstName:"Jane",
     lastName:"Doe",
     phone:"666-555-5555",
@@ -32,7 +31,7 @@ export const demoUsers:userTable[] = [
     vendorid:""
  },
  {
-    userid:InitID.getId(),
+    userid:"2",
     firstName:"Taylor",
     lastName:"Swith",
     phone:"777-555-5555",
@@ -40,7 +39,7 @@ export const demoUsers:userTable[] = [
     vendorid:""
  },
  {
-    userid:InitID.getId(),
+    userid:"3",
     firstName:"Ben",
     lastName:"Joe",
     phone:"888-555-5555",
@@ -49,9 +48,9 @@ export const demoUsers:userTable[] = [
  }
 
 ]
-export const getUser = (userIndex:number) =>{
+export const getUser = (userIndex:string) =>{
 
-    const user: userTable|null = demoUsers[userIndex] ?? null
+    const user: userTable|null = demoUsers.find(p=> p.userid === userIndex) ?? null
     if(user){
       return(user)
     }
@@ -59,10 +58,10 @@ export const getUser = (userIndex:number) =>{
   
    
 }
-export const demoClient = (userIndex:number) => {
+export const demoClient = (userIndex:string) => {
      const user = getUser(userIndex);
      if(user){
-     return{...user,lastName:`${user.lastName} [CLIENT]`}
+     return{...user,lastName:`${user.lastName} [CLIENT]`, userid:`${user.userid}-Client`}
      }
      return(false)
    }

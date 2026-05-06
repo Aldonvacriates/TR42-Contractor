@@ -3,7 +3,7 @@ import { ContactCard } from "@/components/ContactCard"
 import { MainFrame } from "@/components/MainFrame"
 import { SearchBar } from "@/components/SearchBar"
 import { AppContext, demoUsers } from "@/contexts/AppContext"
-import { useNavigation, useRoute } from "@react-navigation/native"
+import { RouteProp, useNavigation, useRoute } from "@react-navigation/native"
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { FC, useContext, useState } from "react"
 
@@ -15,8 +15,8 @@ export const Contacts:FC = (props) => {
     const {client} = useContext(AppContext)
     const contacts = (client) ?  [...demoUsers,client] : demoUsers
     const  [nameSearch,setNameSearch] = useState("");
-    const  route = useRoute();
-    const sort = route.params
+    const  route = useRoute<RouteProp<RootStackParamList,'Contacts'>>();
+    const sort = route.params?.sort
   
     const Search:FC = () =>{
        return(
