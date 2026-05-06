@@ -23,6 +23,7 @@ import { AppContext, AppProvider} from "./contexts/AppContext";
 import DriveTimeTrackerScreen from "./screens/DriveTimeTrackerScreen";
 import HomeScreen from "./screens/HomeScreen";
 import { InspectionAssistScreen } from "./screens/InspectionAssistScreen";
+import { ChatAssistantScreen } from "./screens/ChatAssistantScreen";
 import InspectionScreen from "./screens/InspectionScreen";
 import { SavedReportsScreen } from "./screens/SavedReportsScreen";
 import SessionLockScreen from "./screens/SessionLockScreen";
@@ -92,6 +93,7 @@ export type RootStackParamList = {
   // ── Aldo — Inspection screen + AI assist + Drive Time ────────
   Inspection: { bypassGate?: boolean } | undefined;
   InspectionAssist: undefined;
+  ChatAssistant: undefined;
   DriveTimeTracker: undefined;
 
   // ── Aldo — Saved Reports ─────────────────────────────────────
@@ -147,6 +149,7 @@ function RootNavigator() {
           <StackNavigator.Screen name="LicenseDetails"   component={LicenseScreen}           />
           <StackNavigator.Screen name="TaskHistory"      component={TaskHistoryScreen}       />
           <StackNavigator.Screen name="InspectionAssist" component={InspectionAssistScreen}  />
+          <StackNavigator.Screen name="ChatAssistant"    component={ChatAssistantScreen}     />
           <StackNavigator.Screen name="DriveTimeTracker" component={DriveTimeTrackerScreen}  />
           <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />
        
