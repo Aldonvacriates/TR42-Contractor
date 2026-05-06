@@ -92,25 +92,23 @@ export default function BiometricScreen() {
 
     setTimeout(async () => {
       if (DEV_MODE) {
-      try {
         await login(pendingToken, pendingUser);
-      } catch (e) {
-        console.error('DEV_MODE login failed:', e);
+        if (onSuccess) {
+          go(onSuccess);
+        } else {
+          navigation.replace('Dashboard');
+        }
+        return; // ← stop here, don't fall through to the real scan logic below
       }
-      if (onSuccess) {
-        go(onSuccess);
-      }
-      return;
-    }
+
       const scanWorked = Math.random() > 0.3;
       if (scanWorked) {
         await login(pendingToken, pendingUser);
-        // See comment above — let RootNavigator handle the stack swap.
-       if(onSuccess){
-        go(onSuccess);
-       }else{
-        return;
-       }
+        if (onSuccess) {
+          go(onSuccess);
+        } else {
+          navigation.replace('Dashboard');
+        }
       } else {
         setScanState('failed');
       }
@@ -118,7 +116,7 @@ export default function BiometricScreen() {
   };
 
   const handleForceFail = () => setScanState('failed');
-  const handleUsePIN    = () => navigation.replace('OfflineLogin');
+  const handleUsePIN = () => navigation.replace('OfflineLogin', { pendingToken, pendingUser });
 
   const getScanIcon      = () => selectedMethod === 'face' ? 'scan' : 'finger-print';
   const getScanIconColor = () => {
