@@ -186,6 +186,7 @@ export function pingServer(): void {
 async function buildAuthHeaders(extra?: Record<string, string>): Promise<Record<string, string>> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
     ...(extra ?? {}),
   };
   const token = await getToken();
@@ -202,6 +203,7 @@ async function request<T>(
     ? await buildAuthHeaders(options.headers as Record<string, string> | undefined)
     : {
         'Content-Type': 'application/json',
+        'ngrok-skip-browser-warning': 'true',
         ...(options.headers as Record<string, string> | undefined),
       };
 

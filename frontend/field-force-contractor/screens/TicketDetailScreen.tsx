@@ -13,7 +13,23 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import { verifyOfflinePin } from '../utils/secureStorage';
 import { ticketDisplayTitle } from '../utils/ticketLabels';
 import { analyzePhoto, friendlyAIError, PhotoAnalysis } from '../utils/aiClient';
-import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
+// expo-speech-recognition is a custom native module not bundled in Expo Go.
+// When running under Expo Go the import throws at module load. Fall back to
+// a no-op shim so the rest of the screen still mounts; voice dictation just
+// becomes inactive. A real dev build will resolve to the real module.
+let ExpoSpeechRecognitionModule: any = {
+  stop: () => {},
+  start: (_opts?: any) => {},
+  requestPermissionsAsync: async () => ({ granted: false }),
+};
+let useSpeechRecognitionEvent: any = (_event: string, _handler: any) => {};
+try {
+  const m = require('expo-speech-recognition');
+  ExpoSpeechRecognitionModule = m.ExpoSpeechRecognitionModule;
+  useSpeechRecognitionEvent = m.useSpeechRecognitionEvent;
+} catch {
+  // running in Expo Go — voice dictation disabled
+}
 import { api } from '../utils/api';
 
 function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -206,12 +222,12 @@ export default function TicketDetailScreen() {
 
   useSpeechRecognitionEvent('start', () => setListening(true));
   useSpeechRecognitionEvent('end', () => setListening(false));
-  useSpeechRecognitionEvent('result', (event) => {
+  useSpeechRecognitionEvent('result', (event: any) => {
     if (event.results[0]?.transcript) {
       setNotes(prev => (prev ? prev + ' ' : '') + event.results[0].transcript);
     }
   });
-  useSpeechRecognitionEvent('error', (event) => {
+  useSpeechRecognitionEvent('error', (event: any) => {
     console.warn('Speech error:', event.error, event.message);
     setListening(false);
   });
