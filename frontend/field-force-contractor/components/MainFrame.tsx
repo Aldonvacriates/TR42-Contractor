@@ -27,34 +27,34 @@
 // inside MainFrame's centered ScrollView.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { FC, ReactNode,useEffect,useContext, useRef, useState}  from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ImageBackground,
-  ScrollView,
-  StyleSheet,
-  RefreshControl,
-  NativeScrollEvent,
-  NativeSyntheticEvent,
-  GestureResponderEvent,
-  LayoutChangeEvent,
-  PanResponder,
-  PanResponderGestureState,
-} from 'react-native';
-import { Ionicons }       from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList }     from "@/App"
-import { Styles }              from '@/constants/Styles';
-import { Assets }              from '@/constants/Assets';
-import { colors, spacing, fontSize, fonts } from '@/constants/theme';
+import { RootStackParamList } from "@/App";
 import { Header, HeaderVariant } from '@/components/Header';
-import { Menu, MenuOptions }   from '@/components/Menu';
-import { Menus }               from '@/constants/Menus';
+import { Menu, MenuOptions } from '@/components/Menu';
+import { Assets } from '@/constants/Assets';
+import { Menus } from '@/constants/Menus';
+import { Styles } from '@/constants/Styles';
+import { colors, fontSize, fonts, spacing } from '@/constants/theme';
 import { AppContext } from '@/contexts/AppContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation, useRoute } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { FC, ReactNode, useContext, useEffect, useRef, useState } from 'react';
+import {
+  GestureResponderEvent,
+  ImageBackground,
+  LayoutChangeEvent,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  PanResponder,
+  PanResponderGestureState,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 
 
 // ── SubHeader ─────────────────────────────────────────────────────────────────

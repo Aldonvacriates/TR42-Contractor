@@ -1,7 +1,5 @@
 import { createContext, ReactNode, useState } from "react"
 
-
-
 export const  AppContext = createContext<any>(null)
 export type userTable = {
 
@@ -13,7 +11,7 @@ export type userTable = {
     vendorid:string
 }
 //Demo User Data
-export const demoUsers:userTable[] = [
+export const _DEV_MODE_DEMO_USERS:userTable[] = [
  {
     userid:"0",
     firstName:"John",
@@ -50,27 +48,27 @@ export const demoUsers:userTable[] = [
 ]
 export const getUser = (userid:string) =>{
 
-    const user: userTable|boolean = demoUsers.find(p => p.userid === userid)  || false
+    const user: userTable|boolean = _DEV_MODE_DEMO_USERS.find(p => p.userid === userid)  || false
     if(user){
       return(user)
     }
     return(false)
   
-   
 }
-export const demoClient = (userid:string) => {
+export const _DEV_MODE_DEMO_CLIENT = (userid:string) => {
      const user = getUser(userid);
      if(user !== false ){
-     return{...user!,lastName:`${user!.lastName} [CLIENT]`}
+     return{...user,lastName:`${user.lastName} [CLIENT]`}
      }
-     return(false)
+     return(user)
    }
 export const AppProvider = ({children} : {children:ReactNode}) =>{
+
    const [mount,setMounted] = useState(false);
    const [reverseStack,setReverseStack] = useState(false);
    const [devMode,setDevMode] = useState(false);
    const [userInfo,setUserInfo] = useState(getUser("0")); 
-   const [client,setClient] = useState<userTable | boolean>(demoClient("1"));
+   const [client,setClient] = useState<userTable | boolean>(_DEV_MODE_DEMO_CLIENT("1"));
    
     return(
 
