@@ -73,13 +73,10 @@ export const Chat:FC = (props) =>{
     const route = useRoute<any>()
  
     const {name,contactId} = route.params
-    const [Test,setTest] = useState(false);
     const {userInfo} = useContext(AppContext)
     const sessionId = createSession(userInfo.userid || "",contactId)  
     const {height: windowHeight} = useWindowDimensions();
     const CheckMsg = 10000; //Time interval to check for new messages
-    const MaxMessage = 10;
-    let MessageSent = useRef(0);
     let contactuser = getUser(contactId);
     let CONTACTNAME = `${contactuser?.firstName} ${contactuser?.lastName}`
      
@@ -159,29 +156,8 @@ export const Chat:FC = (props) =>{
         };
     }, [windowHeight]);
    
-   const StartTest = () =>{
-
-     if(Test === false){
-
-              const tm = setInterval(() =>{
-                     if(MaxMessage > MessageSent.current){
-                            
-                            previousDemoMessages.current.push( {sessionId:sessionId, id:InitID.getId(),message:"Test Message " + MessageSent.current,senderId:contactId, utcTimeStamp:TimeFormater.getTimeStamp("UTC-DATE")})
-                            MessageSent.current++
-                     }
-                     else{
-                        clearInterval(tm);
-                        return;
-                     }
- 
-                    },5000)
-                    setTest(true);
-        }
-
-   }
-  
     const SendMessage = (mesg:string) =>{ 
-        //StartTest();    //Sends test messages in intervals for testing
+      
         setMessage(prev => [...prev,{
             sessionId:sessionId,
             id:InitID.getId(),
