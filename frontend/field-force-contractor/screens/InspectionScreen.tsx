@@ -59,8 +59,8 @@ const GREEN   = '#22c55e';
 export default function InspectionScreen() {
   const navigation = useNavigation<Nav>();
   const route      = useRoute<Route>();
-  const bypassGate = (route.params as any)?.bypassGate === true;
-  const taskId = (route.params as any)?.taskId as number | undefined;
+  const bypassGate = (route.params)?.bypassGate === true;
+  const taskId = (route.params)?.taskId as number | undefined;
 
   const [template,      setTemplate]      = useState<ChecklistTemplate | null>(null);
   const [loading,       setLoading]        = useState(true);
@@ -208,7 +208,7 @@ export default function InspectionScreen() {
         results,
       });
       if (taskId) {
-      navigation.navigate('TicketDetail' as never, { taskId, inspectionDone: true } as never);
+        navigation.navigate('TicketDetail' as never, { taskId, inspectionDone: true } as never);
       } else {
         navigation.replace('Dashboard');
       }

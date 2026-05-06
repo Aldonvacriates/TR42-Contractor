@@ -58,7 +58,7 @@ export type RootStackParamList = {
   Contacts: undefined;
   Chat: { name: string; contactId?: string };
   Tickets: undefined;
-  TicketDetail: { taskId: number };
+  TicketDetail: { taskId: number; inspectionDone?: boolean };
 
   // ── Jonathan — Work Orders (placeholder until real screen built) ──
   JobDetail: { jobId: string; workOrderId: string };
@@ -90,7 +90,7 @@ export type RootStackParamList = {
   TaskHistory: undefined;
 
   // ── Aldo — Inspection screen + AI assist + Drive Time ────────
-  Inspection: { bypassGate?: boolean } | undefined;
+  Inspection: { bypassGate?: boolean; taskId?: number } | undefined;
   InspectionAssist: undefined;
   DriveTimeTracker: undefined;
 
@@ -130,7 +130,7 @@ function RootNavigator() {
 
   return (
     <StackNavigator.Navigator
-      screenOptions={screenConfig.window} initialRouteName="SplashScreen"
+      screenOptions={screenConfig.window} initialRouteName="Login"
       
     >
           <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}          />
