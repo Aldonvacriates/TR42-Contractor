@@ -49,8 +49,13 @@ T = TypeVar('T')
 
 
 # Default model per provider. Kept here so changing models is one line.
-DEFAULT_GEMINI_MODEL    = 'gemini-2.5-flash'
-DEFAULT_ANTHROPIC_MODEL = 'claude-haiku-4-5'
+DEFAULT_GEMINI_MODEL          = 'gemini-2.5-flash'
+DEFAULT_ANTHROPIC_MODEL       = 'claude-haiku-4-5'
+# Ollama Cloud needs the `:cloud` suffix on the model name to route to their
+# hosted inference. Local Ollama would use the same names without the suffix.
+DEFAULT_OLLAMA_MODEL          = 'gpt-oss:120b-cloud'
+DEFAULT_OLLAMA_VISION_MODEL   = 'qwen3-vl:235b-cloud'
+DEFAULT_OLLAMA_BASE_URL       = 'https://ollama.com/v1'
 
 
 # OpenAI-style message shape used across the codebase.
@@ -255,6 +260,99 @@ class AnthropicProvider(AIProvider):
         return next((b.text for b in response.content if b.type == 'text'), '')
 
 
+# ── Ollama Cloud (OpenAI-compatible) ─────────────────────────────────────────
+
+class OllamaProvider(AIProvider):
+    """Ollama Cloud via the OpenAI-compatible endpoint.
+
+    Ollama hosts open models (gpt-oss, qwen3-coder, qwen3-vl, deepseek,
+    gemma3, etc.) and exposes a Chat Completions API compatible with the
+    OpenAI Python SDK. Cloud-hosted models use the `:cloud` suffix on the
+    model name; without it, requests get routed to a local Ollama install
+    which won't work from Render.
+
+    Two models so we can pick a vision-capable one for analyze-photo
+    without paying its higher per-token cost on every chat turn:
+    - OLLAMA_MODEL          (default gpt-oss:120b-cloud)        text-only
+    - OLLAMA_VISION_MODEL   (default qwen3-vl:235b-cloud)       vision
+
+    Vision payload uses the OpenAI-format inline data URI (image_url with
+    a data: URL) since Ollama's OpenAI-compat layer mirrors that contract.
+    """
+
+    name = 'ollama'
+
+    def __init__(
+        self,
+        api_key: str,
+        model:        str = DEFAULT_OLLAMA_MODEL,
+        vision_model: str = DEFAULT_OLLAMA_VISION_MODEL,
+        base_url:     str = DEFAULT_OLLAMA_BASE_URL,
+    ):
+        from openai import OpenAI
+        self._client       = OpenAI(api_key=api_key, base_url=base_url)
+        self._model        = model
+        self._vision_model = vision_model
+
+    def _build_messages(self, system: str, messages: List[Message]) -> list:
+        """Prepend the system message OpenAI-style."""
+        out = [{'role': 'system', 'content': system}]
+        out.extend({'role': m['role'], 'content': m['content']} for m in messages)
+        return out
+
+    def generate(self, messages, system, max_tokens=1024):
+        response = self._client.chat.completions.create(
+            model=self._model,
+            messages=self._build_messages(system, messages),
+            max_tokens=max_tokens,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content or ''
+
+    def stream(self, messages, system, max_tokens=1024):
+        stream = self._client.chat.completions.create(
+            model=self._model,
+            messages=self._build_messages(system, messages),
+            max_tokens=max_tokens,
+            temperature=0.7,
+            stream=True,
+        )
+        for chunk in stream:
+            text = chunk.choices[0].delta.content if chunk.choices else None
+            if text:
+                yield text
+
+    def generate_with_image(self, messages, system, image_bytes, mime_type='image/jpeg', max_tokens=1024):
+        import base64
+        encoded = base64.standard_b64encode(image_bytes).decode('ascii')
+        if not messages:
+            messages = [{'role': 'user', 'content': 'Describe what you see.'}]
+
+        # OpenAI-format vision message: multipart content array on the LAST
+        # user turn with both an image_url part (data: URI) and a text part.
+        msgs = self._build_messages(system, messages)
+        last = msgs[-1]
+        text = last.get('content', '') if isinstance(last, dict) else ''
+        if last['role'] != 'user':
+            msgs.append({'role': 'user', 'content': []})
+            last = msgs[-1]
+            text = ''
+        msgs[-1] = {
+            'role': 'user',
+            'content': [
+                {'type': 'image_url', 'image_url': {'url': f'data:{mime_type};base64,{encoded}'}},
+                {'type': 'text',      'text': text or 'Describe what you see.'},
+            ],
+        }
+        response = self._client.chat.completions.create(
+            model=self._vision_model,
+            messages=msgs,
+            max_tokens=max_tokens,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content or ''
+
+
 # ── Selection ────────────────────────────────────────────────────────────────
 
 # Maps provider name -> factory. Factories take no args; they read env vars
@@ -287,8 +385,26 @@ def _make_anthropic():
     return AnthropicProvider(api_key=key, model=model)
 
 
+def _make_ollama():
+    key = os.environ.get('OLLAMA_API_KEY')
+    if not key:
+        from .errors import AIError, AI_CONFIG_MISSING
+        raise AIError(
+            AI_CONFIG_MISSING,
+            'AI is not configured (set OLLAMA_API_KEY in backend/.env)',
+            503,
+        )
+    return OllamaProvider(
+        api_key=key,
+        model=os.environ.get('OLLAMA_MODEL', DEFAULT_OLLAMA_MODEL),
+        vision_model=os.environ.get('OLLAMA_VISION_MODEL', DEFAULT_OLLAMA_VISION_MODEL),
+        base_url=os.environ.get('OLLAMA_BASE_URL', DEFAULT_OLLAMA_BASE_URL),
+    )
+
+
 _PROVIDER_FACTORIES['gemini']    = _make_gemini
 _PROVIDER_FACTORIES['anthropic'] = _make_anthropic
+_PROVIDER_FACTORIES['ollama']    = _make_ollama
 
 
 # Provider instances are cached per-process so we don't re-init the client on
@@ -353,11 +469,26 @@ def _looks_retryable(e: Exception) -> bool:
 
 
 def _other_provider_name(active: str) -> Optional[str]:
-    """Return the OTHER provider name if its key is configured, else None."""
-    if active == 'gemini' and os.environ.get('ANTHROPIC_API_KEY'):
-        return 'anthropic'
-    if active == 'anthropic' and (os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY')):
-        return 'gemini'
+    """Return the next available provider to fall back to.
+
+    Priority order when looking for a fallback (excluding the active one):
+        ollama -> gemini -> anthropic
+
+    Picks the first one that has its key configured. Returns None when no
+    fallback is available, in which case resilient_call surfaces the
+    original error to the client.
+    """
+    candidates = ['ollama', 'gemini', 'anthropic']
+    for name in candidates:
+        if name == active:
+            continue
+        key_env = {
+            'ollama':    'OLLAMA_API_KEY',
+            'gemini':    'GEMINI_API_KEY',
+            'anthropic': 'ANTHROPIC_API_KEY',
+        }[name]
+        if os.environ.get(key_env) or (name == 'gemini' and os.environ.get('GOOGLE_API_KEY')):
+            return name
     return None
 
 

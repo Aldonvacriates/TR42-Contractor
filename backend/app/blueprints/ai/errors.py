@@ -122,6 +122,46 @@ def _is_gemini_error(e: Exception) -> bool:
     return mod.startswith('google.genai') or mod.startswith('google.api_core')
 
 
+def from_openai(e: Exception) -> AIError:
+    """Map an openai SDK exception to AIError.
+
+    Used for any provider that speaks the OpenAI Chat Completions API (Ollama
+    Cloud, OpenAI itself, Groq, etc.). The SDK exception hierarchy mirrors
+    Anthropic's: APIStatusError with .status_code subclasses for the common
+    cases plus connection / timeout for transport.
+    """
+    code   = getattr(e, 'status_code', None) or getattr(e, 'code', None)
+    msg    = str(e)
+    status = code if isinstance(code, int) and 100 <= code < 600 else 503
+
+    msg_lower = msg.lower()
+    looks_like_billing = any(s in msg_lower for s in (
+        'credit', 'billing', 'quota', 'insufficient', 'plan',
+    ))
+    if looks_like_billing:
+        return AIError(AI_SERVICE_ERROR, 'AI service is temporarily unavailable (provider billing/quota)', 503)
+
+    if status in (401, 403):
+        return AIError(AI_CONFIG_MISSING, 'AI service auth failed (check provider API key)', 503)
+    if status == 429:
+        return AIError(AI_RATE_LIMITED, 'AI service is rate-limited, try again shortly', 429)
+    if status == 400:
+        return AIError(AI_BAD_REQUEST, f'AI service rejected the request: {msg}', 400)
+    if status >= 500 or status == 0:
+        return AIError(AI_SERVICE_ERROR, f'AI service error: {msg}', max(status, 503))
+    return AIError(AI_SERVICE_ERROR, f'AI service error: {msg}', status)
+
+
+def _is_openai_error(e: Exception) -> bool:
+    """Cheap check that doesn't require importing openai at module load.
+
+    Catches openai.* exceptions so we map them through from_openai. Used by
+    OllamaProvider (Ollama Cloud speaks OpenAI's Chat Completions API).
+    """
+    mod = type(e).__module__ or ''
+    return mod.startswith('openai.')
+
+
 def from_validation(e: ValidationError) -> AIError:
     """Map a Marshmallow ValidationError to AIError."""
     # Marshmallow gives us a dict; flatten the first message for the user-facing
@@ -155,10 +195,13 @@ def handle_ai_errors(fn):
         except anthropic.APIError as e:
             return from_anthropic(e).to_response()
         except Exception as e:
-            # Gemini errors live in google.genai.errors; sniff the module name
-            # to avoid an import-time dependency on google-genai.
+            # Sniff module names rather than importing the SDKs at module
+            # load time, so the backend boots even when a provider's lib
+            # isn't installed (or is mid-upgrade).
             if _is_gemini_error(e):
                 return from_gemini(e).to_response()
+            if _is_openai_error(e):
+                return from_openai(e).to_response()
             log.exception('Unhandled error in AI route %s', fn.__name__)
             return AIError(
                 AI_INTERNAL,
@@ -172,22 +215,23 @@ def require_api_key():
     """Raise AI_CONFIG_MISSING if no AI provider key is configured.
 
     Selection mirrors providers.get_provider(): checks the active AI_PROVIDER
-    (default gemini) and confirms its key is set. Falls back to anthropic if
-    GEMINI_API_KEY isn't set but ANTHROPIC_API_KEY is, so a half-configured
-    server still serves something instead of failing every request.
+    (default gemini) and confirms its key is set. Falls back to any other
+    configured provider so a half-configured server still serves something.
     """
     import os
     provider = (os.environ.get('AI_PROVIDER') or 'gemini').lower().strip()
     has_gemini    = bool(os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY'))
     has_anthropic = bool(os.environ.get('ANTHROPIC_API_KEY'))
+    has_ollama    = bool(os.environ.get('OLLAMA_API_KEY'))
 
     if provider == 'gemini'    and has_gemini:    return
     if provider == 'anthropic' and has_anthropic: return
-    # Either provider works as a soft fallback when the requested one is missing.
-    if has_gemini or has_anthropic:                return
+    if provider == 'ollama'    and has_ollama:    return
+    # Any configured provider works as a soft fallback.
+    if has_gemini or has_anthropic or has_ollama:  return
 
     raise AIError(
         AI_CONFIG_MISSING,
-        'AI is not configured on this server (set GEMINI_API_KEY or ANTHROPIC_API_KEY in backend/.env)',
+        'AI is not configured on this server (set OLLAMA_API_KEY, GEMINI_API_KEY, or ANTHROPIC_API_KEY in backend/.env)',
         503,
     )
