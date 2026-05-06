@@ -1,5 +1,9 @@
 # TR42-Contractor — Database Schema Reference
 
+> ⚠️ **Before running any seed/migration script against the shared DB, read
+> [`DATABASE_SAFETY.md`](./DATABASE_SAFETY.md).** No `DROP TABLE` / `TRUNCATE`
+> / `db.drop_all()` against shared Supabase without team sign-off.
+
 Source of truth: `backend/app/models.py`. Table names are snake_case. All FKs use the format `table.id`.
 
 ## Auth & People

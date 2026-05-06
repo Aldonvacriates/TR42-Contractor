@@ -1,15 +1,27 @@
 """
-seed_dev.py — Full dev reset + re-seed in one command.
+seed_dev.py — Insert demo data into a dev database.
 
-Wipes all app data (keeps the schema), then inserts:
+After the May-2026 shared-DB drop-tables incident, this script no longer
+wipes existing data. The previous `wipe()` function (which ran a TRUNCATE
+on auth_users CASCADE) was REMOVED entirely. The script now only INSERTs.
+
+If you need a clean slate locally, delete the SQLite file
+(`backend/instance/app.db`) and let `db.create_all()` recreate the schema
+on the next Flask boot.
+
+Inserts (idempotency not guaranteed — re-running may create duplicates or
+fail on unique constraints; that's expected, just clear local data first):
   • 1 vendor user  (manager / admin)
   • 1 contractor   (aldo / the logged-in demo user)
   • Truck Pre-Trip Inspection template (6 sections, 30 items)
   • Today's drive-time session with realistic log segments
   • 3 sample tickets
 
-Usage (from the backend/ directory, with Flask running or not):
+Usage (from the backend/ directory, against LOCAL SQLite only):
     python seed_dev.py
+
+Running this against the shared Supabase is blocked by the safety guard at
+the bottom of the file. Override only with team sign-off.
 
 Login creds after seeding:
     username : aldo        password : 123456
@@ -95,18 +107,6 @@ def hours_ago(h):
 
 def mins_ago(m):
     return now_utc() - timedelta(minutes=m)
-
-
-# ── Wipe ──────────────────────────────────────────────────────────────────────
-
-def wipe(session):
-    """Truncate all app tables, resetting sequences so IDs start at 1."""
-    print('Wiping existing data...')
-    session.execute(db.text(
-        'TRUNCATE TABLE auth_users RESTART IDENTITY CASCADE'
-    ))
-    session.commit()
-    print('  [OK] All rows cleared')
 
 
 # ── Users ─────────────────────────────────────────────────────────────────────
@@ -307,7 +307,9 @@ def seed_tickets(session, vendor_id, contractor_id):
 
 def seed():
     with app.app_context():
-        wipe(db.session)
+        # Note: data wipe was removed after the May-2026 shared-DB incident.
+        # Seeding now only INSERTs. If you need a clean slate, drop the local
+        # SQLite file (`backend/instance/app.db`) and let db.create_all() run.
         vendor_auth, vendor, contractor_auth, contractor = seed_users(db.session)
         seed_inspection_template(db.session)
         seed_drive_time(db.session, contractor.id)
@@ -321,4 +323,23 @@ def seed():
 
 
 if __name__ == '__main__':
+    # ── Safety guard ────────────────────────────────────────────────────────
+    # The May-2026 incident happened when seed scripts ran against the shared
+    # Render/Supabase DB. wipe() has been removed, but seeding can still
+    # create duplicate / conflicting rows on a populated shared DB and may
+    # leak demo passwords into prod. Block any non-SQLite target unless
+    # explicitly opted in.
+    db_url = os.environ.get('DATABASE_URL', '')
+    if db_url and not db_url.startswith('sqlite'):
+        if os.environ.get('ALLOW_DESTRUCTIVE_SEED') != '1':
+            print('=' * 60)
+            print('REFUSING TO RUN: DATABASE_URL points at a remote database.')
+            print()
+            print('  DATABASE_URL =', db_url.split('@')[-1])  # show host only
+            print()
+            print('To run anyway, set ALLOW_DESTRUCTIVE_SEED=1 in your env.')
+            print('Coordinate with the team lead first — see DATABASE_SAFETY.md.')
+            print('=' * 60)
+            raise SystemExit(1)
+
     seed()
