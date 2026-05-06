@@ -20,6 +20,9 @@ function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+const acceptLocationKey = (id: number) => `accept_location_${id}`;
+const notesKey = (id: number) => `notes_${id}`;
+
 export default function TicketDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
@@ -35,8 +38,7 @@ export default function TicketDetailScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
-  const [inspectionDone, setInspectionDone] = useState(route.params?.inspectionDone ?? false);
-
+  const [inspectionDone, setInspectionDone] = useState(false);
   const pinRefs = useRef<(TextInput | null)[]>([null, null, null, null, null, null]);
 
   // ── Load saved biometric preference ────────────────────────────────────────
@@ -49,7 +51,7 @@ export default function TicketDetailScreen() {
         if (saved === 'face' || saved === 'fingerprint') {
           setSelectedMethod(saved);
         }
-        const savedNotes = await AsyncStorage.getItem(`notes_${taskId}`);
+        const savedNotes = await AsyncStorage.getItem(notesKey(taskId));
         if (savedNotes) setNotes(savedNotes);
       } catch {
         // Fall back to fingerprint default if read fails
@@ -75,7 +77,7 @@ export default function TicketDetailScreen() {
     if (verificationStep !== 'location') return;
     (async () => {
       try {
-        const DEV_SKIP_LOCATION = true;  // remove before production
+        const DEV_SKIP_LOCATION = false; 
 
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted') {
@@ -92,9 +94,10 @@ export default function TicketDetailScreen() {
             task.locationCoords.lat,
             task.locationCoords.lng
           );
-          const THRESHOLD_METERS = 1609; // ~1 mile
+          const METERS_PER_MILE = 1609; // ~1 mile
+          const THRESHOLD_METERS = METERS_PER_MILE;
           if (distance > THRESHOLD_METERS) {
-            setErrorMessage(`You must be within 1 mile of the site. You are currently ${Math.round(distance / 1609 * 10) / 10} miles away.`);
+            setErrorMessage(`You must be within 1 mile of the site. You are currently ${Math.round(distance / METERS_PER_MILE * 10) / 10} miles away.`);
             setVerificationStep('error');
             return;
           }
@@ -107,6 +110,10 @@ export default function TicketDetailScreen() {
       }
     })();
   }, [verificationStep]);
+
+  useEffect(() => {
+    if (route.params?.inspectionDone) setInspectionDone(true);
+  }, [route.params?.inspectionDone]);
 
 
   useSpeechRecognitionEvent('start', () => setListening(true));
@@ -127,7 +134,7 @@ export default function TicketDetailScreen() {
     deadline: 'March 21, 2026 at 5:00 PM',
     location: '1234 Main Street, San Francisco, CA 94102',
     locationCoords: { lat: 37.7749, lng: -122.4194 },
-    inspectionRequired: true,   // toggle false to test without inspection
+    inspectionRequired: false,   
     description: 'Install new gas pump model XR-500 at station #42. Ensure proper connection to underground tank and test all safety mechanisms before completion.',
     pointOfContact: { name: 'John Martinez', phone: '+1 (555) 012-3456' },
     photosRequired: 1,
@@ -276,8 +283,8 @@ export default function TicketDetailScreen() {
           : undefined,
       });
 
-      await AsyncStorage.removeItem(`notes_${taskId}`);
-      await AsyncStorage.removeItem(`accept_location_${taskId}`);
+      await AsyncStorage.removeItem(notesKey(taskId));
+      await AsyncStorage.removeItem(acceptLocationKey(taskId));
     } catch {
       // TODO: queue for offline retry when sync manager is built
     }
@@ -328,8 +335,7 @@ export default function TicketDetailScreen() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status === 'granted') {
         const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        await AsyncStorage.setItem(
-          `accept_location_${taskId}`,
+        await AsyncStorage.setItem(acceptLocationKey(taskId),
           JSON.stringify({ coords: loc.coords, timestamp: loc.timestamp })
         );
       }
@@ -402,7 +408,7 @@ export default function TicketDetailScreen() {
       </View>
 
       {/* ── Point of Contact ── */}
-      <TouchableOpacity  style={styles.infoCard} onPress={() => navigation.navigate('Contacts')}>
+      <TouchableOpacity style={styles.infoCard} onPress={() => navigation.navigate('Contacts')}>
         <View style={styles.infoIcon}>
           <Ionicons name="person" size={18} color="#ff8c00" />
         </View>
@@ -412,7 +418,7 @@ export default function TicketDetailScreen() {
           <Text style={styles.taskDetail}>{task.pointOfContact.phone}</Text>
         </View>
         <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
-      </TouchableOpacity >
+      </TouchableOpacity>
 
       {/* ── Description ── */}
       <View style={styles.card}>
@@ -437,7 +443,7 @@ export default function TicketDetailScreen() {
             value={notes}
             onChangeText={(text) => {
               setNotes(text);
-              AsyncStorage.setItem(`notes_${taskId}`, text);
+              AsyncStorage.setItem(notesKey(taskId), text);
             }}
             placeholder="Add notes, observations, or issues..."
             placeholderTextColor="#6b7280"
