@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { ActivityIndicator, TextInput, View } from "react-native";
+import { useEffect, useState,useContext} from "react";
+import { TextInput, View, ActivityIndicator } from "react-native";
 import { LoadFonts } from "./utils/LoadFonts";
 
 // Dark translucent keyboard on iOS for every TextInput in the app
@@ -15,18 +15,19 @@ import { ThemeProvider } from "./contexts/ThemeContext";
 
 // ── Jonathan ──────────────────────────────────────
 import { screenConfig } from "./constants/ScreenConfig";
-import { AppProvider } from "./contexts/AppContext";
-import { Blank } from "./screens/Blank";
 import { Chat } from "./screens/ChatScreen";
 import { Contacts } from "./screens/ContactScreen";
+import { SplashScreen} from "./screens/SplashScreen";
+import { AppContext, AppProvider} from "./contexts/AppContext";
 import DriveTimeTrackerScreen from "./screens/DriveTimeTrackerScreen";
 import HomeScreen from "./screens/HomeScreen";
 import { InspectionAssistScreen } from "./screens/InspectionAssistScreen";
 import InspectionScreen from "./screens/InspectionScreen";
 import { SavedReportsScreen } from "./screens/SavedReportsScreen";
-import { SplashScreen } from "./screens/SplashScreen";
+import SessionLockScreen from "./screens/SessionLockScreen";
 import TicketDetailScreen from "./screens/TicketDetailScreen";
 import TicketsScreen from "./screens/TicketsScreen";
+import { Blank } from "./screens/Blank";
 
 // ── TROY — Auth screens ──────────────────────────────────────
 import BiometricScreen from "./screens/BiometricScreen";
@@ -52,9 +53,8 @@ export type RootStackParamList = {
   // ── Jonathan — App screens ───────────────────────────────────
   Home: undefined;
   Blank: undefined;
-
   // ── Charlie — App screens ───────────────────────────────────
-  Contacts: {sort?:boolean};
+  Contacts: undefined;
   Chat: { name: string; contactId?: string };
   Tickets: undefined;
   TicketDetail: { taskId: number };
