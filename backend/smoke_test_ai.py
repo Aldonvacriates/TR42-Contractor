@@ -8,7 +8,10 @@ Pre-conditions
 --------------
 1. backend/.env is configured for local dev:
      SECRET_KEY=<anything>
-     ANTHROPIC_API_KEY=sk-ant-...
+     # one of the following (or both for hot-swap):
+     GEMINI_API_KEY=...                 # default provider
+     ANTHROPIC_API_KEY=sk-ant-...       # fallback provider
+     # AI_PROVIDER=gemini                (default; set to anthropic to swap)
    (DATABASE_URL must be commented out so Flask uses local SQLite.)
 2. Local DB has been seeded:
      cd backend
@@ -149,7 +152,7 @@ def main() -> None:
            s == 400 and isinstance(b, dict) and b.get('code') == 'AI_BAD_REQUEST')
 
     print()
-    print('Happy path (requires ANTHROPIC_API_KEY)')
+    print('Happy path (requires an AI provider key: GEMINI_API_KEY or ANTHROPIC_API_KEY)')
 
     # ── Happy path: inspection-assist ───────────────────────────────────────
     notes = (
@@ -165,7 +168,7 @@ def main() -> None:
 
     if s == 503 and isinstance(b, dict) and b.get('code') == 'AI_CONFIG_MISSING':
         warn('inspection-assist',
-             'ANTHROPIC_API_KEY not set; skipping all happy-path tests')
+             'no AI provider key configured; skipping all happy-path tests')
         report = None
     elif s == 200 and isinstance(b, dict) and 'title' in b:
         expect('inspection-assist returns structured report',
@@ -199,7 +202,7 @@ def main() -> None:
         )
         s, b = status_and_body(r)
         if s == 503 and isinstance(b, dict) and b.get('code') == 'AI_CONFIG_MISSING':
-            warn('chat', 'ANTHROPIC_API_KEY not set; skipping')
+            warn('chat', 'no AI provider key configured; skipping')
         else:
             expect('chat returns assistant reply',
                    s == 200 and isinstance(b, dict) and b.get('reply'))
