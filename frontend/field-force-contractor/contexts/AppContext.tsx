@@ -50,18 +50,18 @@ export const demoUsers:userTable[] = [
 ]
 export const getUser = (userid:string) =>{
 
-    const user: userTable|boolean = demoUsers.find(p => p.userid === userid)  || false
+    const user: userTable|null = demoUsers.find(p => p.userid === userid) ?? null
     if(user){
       return(user)
     }
-    return(false)
+    return(user)
   
    
 }
 export const demoClient = (userid:string) => {
      const user = getUser(userid);
-     if(user !== false ){
-     return{...user!,lastName:`${user!.lastName} [CLIENT]`}
+     if(user){
+     return{...user,lastName:`${user.lastName} [CLIENT]`}
      }
      return(false)
    }
