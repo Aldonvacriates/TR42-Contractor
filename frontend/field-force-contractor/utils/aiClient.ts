@@ -353,6 +353,14 @@ export async function fetchPhotoDataUri(photoId: string): Promise<string> {
 export function friendlyAIError(err: unknown): string {
   const e = err as Partial<ApiError> | undefined;
   const code = e?.code;
+  const raw  = (e?.error ?? '').toLowerCase();
+
+  // Detect billing/quota messages from any provider regardless of code, since
+  // the same upstream "credit balance too low" can land as 400 or 503.
+  if (raw.includes('credit balance') || raw.includes('billing') ||
+      raw.includes('quota') || raw.includes('insufficient')) {
+    return 'The AI service is temporarily unavailable. Try again in a moment.';
+  }
 
   switch (code) {
     case 'AI_RATE_LIMITED':
@@ -368,8 +376,13 @@ export function friendlyAIError(err: unknown): string {
     case 'AI_NOT_FOUND':
       return "I couldn't find that item.";
     case 'AI_BAD_REQUEST': {
-      // Pull out the user-relevant part if backend included details.
-      const detail = (e?.error ?? '').replace(/^Invalid request:\s*/i, '');
+      // If the message looks like a raw provider error (contains JSON or
+      // "Error code:"), don't show it — fall back to a generic line.
+      const msg = e?.error ?? '';
+      if (/\{['"]/.test(msg) || /error code:/i.test(msg) || msg.length > 140) {
+        return "The AI couldn't process that request. Try again.";
+      }
+      const detail = msg.replace(/^Invalid request:\s*/i, '');
       return detail || 'That request was missing or invalid.';
     }
   }
@@ -379,9 +392,10 @@ export function friendlyAIError(err: unknown): string {
     return "You're offline. The request will retry when you reconnect.";
   }
 
-  // Last resort: scrub any raw upstream JSON out of the error string before
-  // showing it. The backend returns a clean message in 99% of cases; this
-  // only triggers on truly unexpected failures.
-  const raw = e?.error ?? 'Something went wrong. Try again.';
-  return raw.replace(/\{[^}]*\}/g, '').trim() || 'Something went wrong. Try again.';
+  // Last resort: aggressively scrub any raw upstream JSON or stack trace.
+  const rawMsg = e?.error ?? 'Something went wrong. Try again.';
+  if (/\{['"]/.test(rawMsg) || /error code:/i.test(rawMsg) || rawMsg.length > 140) {
+    return 'Something went wrong. Try again.';
+  }
+  return rawMsg.replace(/\{[^}]*\}/g, '').trim() || 'Something went wrong. Try again.';
 }

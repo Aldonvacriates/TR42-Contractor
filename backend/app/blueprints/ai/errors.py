@@ -59,18 +59,37 @@ def from_anthropic(e: Exception) -> AIError:
     Anthropic raises a hierarchy under anthropic.APIError. We pick out the
     common ones and fall back to AI_SERVICE_ERROR for the rest. Status codes
     are taken from the upstream response when available.
+
+    Special case: Anthropic returns a 400 BadRequest for "credit balance is
+    too low to access the Anthropic API" — that's an account-level billing
+    issue, NOT bad user input. We map it to AI_SERVICE_ERROR so the resilient
+    fallback kicks in and the contractor sees "service unavailable" instead
+    of "your request was wrong".
     """
+    msg = str(e).lower()
+    looks_like_billing = any(s in msg for s in (
+        'credit balance', 'billing', 'quota', 'plans & billing', 'insufficient',
+    ))
+
     if isinstance(e, anthropic.RateLimitError):
         return AIError(AI_RATE_LIMITED, 'AI service is rate-limited, try again shortly', 429)
     if isinstance(e, anthropic.AuthenticationError):
         return AIError(AI_CONFIG_MISSING, 'AI service auth failed (check ANTHROPIC_API_KEY)', 503)
     if isinstance(e, anthropic.BadRequestError):
+        if looks_like_billing:
+            return AIError(
+                AI_SERVICE_ERROR,
+                'AI service is temporarily unavailable (provider billing/quota)',
+                503,
+            )
         return AIError(AI_BAD_REQUEST, f'AI service rejected the request: {e}', 400)
     if isinstance(e, anthropic.APIConnectionError):
         return AIError(AI_SERVICE_ERROR, 'Could not reach AI service', 503)
     if isinstance(e, anthropic.APIError):
         # Generic upstream failure. Carry through the status code if we have one.
         status = getattr(e, 'status_code', 503) or 503
+        if looks_like_billing:
+            return AIError(AI_SERVICE_ERROR, 'AI service is temporarily unavailable (provider billing/quota)', 503)
         return AIError(AI_SERVICE_ERROR, f'AI service error: {e}', status)
     return AIError(AI_INTERNAL, f'Unexpected AI failure: {e}', 500)
 
