@@ -8,7 +8,7 @@ import { InitID } from "@/utils/InitID"
 import { TimeFormater } from "@/utils/timeFormater"
 import { useRoute } from '@react-navigation/native'
 import React, { FC, ReactNode, useContext, useEffect, useRef, useState } from "react"
-import { Image, Keyboard, Text, View } from "react-native"
+import { Image, Keyboard, Text, useWindowDimensions, View } from "react-native"
 
 type Props = {
 
@@ -30,11 +30,10 @@ type ScrollMetrics = {
 
 const LOAD_PREVIOUS_DRAG_DISTANCE = 20;
 const LOAD_PREVIOUS_HOLD_TIME = 2000;
-const MAXPERLOAD = 5;
-const INTIAL_LOAD = 10;
-
+   const MAXPERLOAD = 2;
+    const INTIALLOAD = 10;
 //Demo Chat sessions database
-const _DEV_MODE_DEMO_SESSIONS = [
+const demoSessions = [
    {sessionid:"123456",
     user_one_id:"1",
     user_two_id:"2"
@@ -53,13 +52,13 @@ const _DEV_MODE_DEMO_SESSIONS = [
 const createSession = (userA:string,userB:string) => {
   //Checks the demo database to ensure that a message session does not already exist that contains the 2 contacts before creating a new one
   let session;
-  if( _DEV_MODE_DEMO_SESSIONS.some(p => [p.user_one_id,p.user_two_id].includes(userA) && [p.user_one_id,p.user_two_id].includes(userB)) === false){
+  if(demoSessions.some(p => [p.user_one_id,p.user_two_id].includes(userA) && [p.user_one_id,p.user_two_id].includes(userB)) === false){
     session = InitID.getId();
-     _DEV_MODE_DEMO_SESSIONS.push({sessionid:session,user_one_id:userA,user_two_id:userB}) // create new session in demo database
+    demoSessions.push({sessionid:session,user_one_id:userA,user_two_id:userB}) // create new session in demo database
   }
   else{
    // if a session already exist for the 2 provided contacts return that message session id
-    session =  _DEV_MODE_DEMO_SESSIONS.find(p => [p.user_one_id,p.user_two_id].includes(userA) && [p.user_one_id,p.user_two_id].includes(userB))?.sessionid || ""
+    session = demoSessions.find(p => [p.user_one_id,p.user_two_id].includes(userA) && [p.user_one_id,p.user_two_id].includes(userB))?.sessionid || ""
   }
  
  return(session);
@@ -72,15 +71,20 @@ const messageSlice = (messages:TypeMessage[],load:number) =>{
 export const Chat:FC = (props) =>{
 
     const route = useRoute<any>()
+ 
     const {name,contactId} = route.params
+    const [Test,setTest] = useState(false);
     const {userInfo} = useContext(AppContext)
     const sessionId = createSession(userInfo.userid || "",contactId)  
+    const {height: windowHeight} = useWindowDimensions();
     const CheckMsg = 10000; //Time interval to check for new messages
+    const MaxMessage = 10;
+    let MessageSent = useRef(0);
     let contactuser = getUser(contactId);
-    let CONTACTNAME = (contactuser !== false) && `${contactuser?.firstName} ${contactuser?.lastName}`
+    let CONTACTNAME = `${contactuser?.firstName} ${contactuser?.lastName}`
      
     //Demo Messages database 
-     const _DEV_MODE_DEMO_MESSAGES =  useRef<TypeMessage[]> ([
+     const previousDemoMessages =  useRef<TypeMessage[]> ([
 
         {sessionId:sessionId, id:InitID.getId(),message:"Hello",senderId:userInfo.userid, utcTimeStamp:"2026-03-23T23:28:27.788Z"}, 
         {sessionId:sessionId,id:InitID.getId(),message:"Hello",senderId:contactId, utcTimeStamp:"2026-03-23T23:28:27.788Z"}, 
@@ -113,18 +117,19 @@ export const Chat:FC = (props) =>{
     ])
    
     const {reverseStack} = useContext(AppContext);
-    const [messages,setMessage] = useState(messageSlice(_DEV_MODE_DEMO_MESSAGES.current,INTIAL_LOAD));
+    const [messages,setMessage] = useState(messageSlice(previousDemoMessages.current,INTIALLOAD));
     const lastSync = useRef(TimeFormater.getTimeStamp("UTC-DATE"));
-    const messageIds = useRef(new Set(messageSlice(_DEV_MODE_DEMO_MESSAGES.current,INTIAL_LOAD).map(item => item.id)));
-    const fromSet = useRef((_DEV_MODE_DEMO_MESSAGES.current.length >= INTIAL_LOAD) ? _DEV_MODE_DEMO_MESSAGES.current.length - INTIAL_LOAD - MAXPERLOAD : 0);
-    const toSet = useRef(_DEV_MODE_DEMO_MESSAGES.current.length);
+    const messageIds = useRef(new Set(messageSlice(previousDemoMessages.current,INTIALLOAD).map(item => item.id)));
+    const fromSet = useRef((previousDemoMessages.current.length >= INTIALLOAD) ? previousDemoMessages.current.length - INTIALLOAD - MAXPERLOAD : 0);
+    const toSet = useRef(previousDemoMessages.current.length);
     const [loading,setLoading] = useState(false);
     const loadingPreviousMessages = useRef(false);
     const lastScrollY = useRef(0);
     const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isAtBottomRef = useRef(false);
     useEffect(() => {
-    
+      
+   
            const syncMessages = (messages:TypeMessage[]) =>{
             
             const tm = setInterval(() =>{   
@@ -138,22 +143,45 @@ export const Chat:FC = (props) =>{
                 })
                   lastSync.current = TimeFormater.getTimeStamp("UTC-DATE")
                   if(newMessages.length > 0){
-                    setMessage(prev => [...prev,...newMessages])                  
+                    setMessage(prev => [...prev,...newMessages])  
+                    
+                  
                   }       
                                               
                     },CheckMsg)
                     return(tm)
                 }
-               const tm = syncMessages(_DEV_MODE_DEMO_MESSAGES.current);
+               const tm = syncMessages(previousDemoMessages.current);
         return () => {
            
             clearInterval(tm);
             clearHoldTimer();
         };
-    }, []);
+    }, [windowHeight]);
    
+   const StartTest = () =>{
+
+     if(Test === false){
+
+              const tm = setInterval(() =>{
+                     if(MaxMessage > MessageSent.current){
+                            
+                            previousDemoMessages.current.push( {sessionId:sessionId, id:InitID.getId(),message:"Test Message " + MessageSent.current,senderId:contactId, utcTimeStamp:TimeFormater.getTimeStamp("UTC-DATE")})
+                            MessageSent.current++
+                     }
+                     else{
+                        clearInterval(tm);
+                        return;
+                     }
+ 
+                    },5000)
+                    setTest(true);
+        }
+
+   }
+  
     const SendMessage = (mesg:string) =>{ 
-      
+        //StartTest();    //Sends test messages in intervals for testing
         setMessage(prev => [...prev,{
             sessionId:sessionId,
             id:InitID.getId(),
@@ -173,7 +201,10 @@ export const Chat:FC = (props) =>{
               setTimeout(() => {              
                  resolve();
               },wait)
-             ));  
+              
+
+             ));
+            
          }
     const nextSlice = (load:number) =>{
 
@@ -231,7 +262,7 @@ export const Chat:FC = (props) =>{
             loadingPreviousMessages.current = true;
             setLoading(true);
             try{
-                await previousMessages(_DEV_MODE_DEMO_MESSAGES.current,1000);
+                await previousMessages(previousDemoMessages.current,1000);
             }
             finally{
                 setLoading(false);
@@ -305,7 +336,7 @@ export const Chat:FC = (props) =>{
             }
         }
     }
-    const handleMovement = (movement = 0,metrics?:ScrollMetrics) =>{
+    const movement = (movement = 0,metrics?:ScrollMetrics) =>{
         if(movement > LOAD_PREVIOUS_DRAG_DISTANCE){
             startPreviousMessagesHold(metrics);
         }
@@ -322,7 +353,7 @@ export const Chat:FC = (props) =>{
             </View>}
         <SearchBar placeHolder="Message..." buttonText="Send" multiline onClick={(msg:string)=>{(msg) && SendMessage(msg)}} resetOnSubmit={true}/>
         </>
-        } onRefresh={() => {if(reverseStack === false) {previousMessages(_DEV_MODE_DEMO_MESSAGES.current,2000)}}} onScroll={(event:any,touch?:number,movement?:number,metrics?:ScrollMetrics) => {scroll(event,touch,movement,metrics)}} onMovement={(move:number,metrics?:ScrollMetrics) => {handleMovement(move,metrics)}} onTouchEnd={() => {clearHoldTimer()}}>
+        } onRefresh={() => {if(reverseStack === false) {previousMessages(previousDemoMessages.current,2000)}}} onScroll={(event:any,touch?:number,movement?:number,metrics?:ScrollMetrics) => {scroll(event,touch,movement,metrics)}} onMovement={(move:number,metrics?:ScrollMetrics) => {movement(move,metrics)}} onTouchEnd={() => {clearHoldTimer()}}>
         
             <View style={Styles.Chat.container}>
               
