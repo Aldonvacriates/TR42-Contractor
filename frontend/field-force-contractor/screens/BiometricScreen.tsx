@@ -211,13 +211,10 @@ export default function BiometricScreen() {
           <Text style={styles.hintText}>Scanning…</Text>
         )}
 
-        {/* DEV: Force Fail — remove entire block before production */}
-        {DEV_MODE && scanState === 'idle' && (
-          <TouchableOpacity style={styles.devFailBtn} onPress={handleForceFail} activeOpacity={0.8}>
-            <Ionicons name="construct-outline" size={14} color={colors.warning} />
-            <Text style={styles.devFailText}>Force Fail (Dev)</Text>
-          </TouchableOpacity>
-        )}
+        {/* "Force Fail" dev button removed for showcase. The DEV_MODE flag
+            still controls whether biometric scans auto-succeed — only the
+            visible test button is gone. Restore from git if you need it
+            during local dev. */}
 
         {/* Failed state — retry + PIN fallback */}
         {scanState === 'failed' && (
