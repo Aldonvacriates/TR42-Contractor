@@ -306,8 +306,13 @@ export default function TicketDetailScreen() {
   };
 
   const handleStartTask = () => {
+    // Reset everything so a previous failed attempt doesn't leak state into
+    // this fresh verification flow.
     setShowVerificationModal(true);
     setVerificationStep('initial');
+    setErrorMessage('');
+    setScanState('idle');
+    setPin(['', '', '', '', '', '']);
   };
 
   // Shared post-pick logic: append to photo state and capture a geotag
@@ -470,19 +475,30 @@ export default function TicketDetailScreen() {
     setScanState('idle');
   };
 
+  // Helper that switches the verification modal to the error step with a
+  // specific message. Centralised so we always set the message BEFORE the
+  // step (avoiding a render frame where the error UI shows but the message
+  // hasn't landed yet).
+  const showVerificationError = (message: string) => {
+    setErrorMessage(message);
+    setScanState('idle');
+    setVerificationStep('error');
+  };
+
   const handleBiometricAuth = async () => {
     if (scanState === 'scanning') return;
     setScanState('scanning');
-    setErrorMessage('');
 
     try {
       const hasHardware = await LocalAuthentication.hasHardwareAsync();
       const enrolled    = await LocalAuthentication.isEnrolledAsync();
 
-      if (!hasHardware || !enrolled) {
-        setScanState('idle');
-        setVerificationStep('error');
-        setErrorMessage('Biometrics not available. Please use PIN.');
+      if (!hasHardware) {
+        showVerificationError('This device has no biometric hardware. Please use PIN.');
+        return;
+      }
+      if (!enrolled) {
+        showVerificationError('No fingerprint or face is enrolled on this device. Please use PIN.');
         return;
       }
 
@@ -495,15 +511,23 @@ export default function TicketDetailScreen() {
       if (result.success) {
         setScanState('idle');
         setVerificationStep('location');
-      } else {
-        setScanState('idle');
-        setVerificationStep('error');
-        setErrorMessage('Biometric scan failed. Please try again or use PIN.');
+        return;
       }
-    } catch {
-      setScanState('idle');
-      setVerificationStep('error');
-      setErrorMessage('Biometric scan failed. Please try again or use PIN.');
+
+      // expo-local-authentication returns an error code we can use to give
+      // the user a more specific reason for the failure.
+      const code = (result as any)?.error as string | undefined;
+      if (code === 'user_cancel' || code === 'app_cancel' || code === 'system_cancel') {
+        showVerificationError('Scan cancelled. Try again or use PIN.');
+      } else if (code === 'lockout' || code === 'lockout_permanent') {
+        showVerificationError('Too many failed attempts. Use your PIN to continue.');
+      } else if (code === 'not_enrolled') {
+        showVerificationError('No fingerprint or face is enrolled on this device. Please use PIN.');
+      } else {
+        showVerificationError('Biometric scan failed. Try again or use PIN.');
+      }
+    } catch (err: any) {
+      showVerificationError(err?.message ?? 'Biometric scan failed. Try again or use PIN.');
     }
   };
 
@@ -843,10 +867,35 @@ export default function TicketDetailScreen() {
               <View style={styles.modalBody}>
                 <Text style={styles.modalText}>Verification failed.</Text>
                 <Ionicons name="alert-circle" size={48} color="#ef4444" style={styles.modalIcon} />
-                {errorMessage !== '' && <Text style={styles.errorText}>{errorMessage}</Text>}
-                <TouchableOpacity style={styles.btnPrimary} onPress={closeModal}>
-                  <Ionicons name="close" size={20} color="white" />
-                  <Text style={styles.btnText}>Close</Text>
+                <Text style={styles.errorText}>
+                  {errorMessage || 'Please try again or use your PIN.'}
+                </Text>
+                <TouchableOpacity
+                  style={styles.btnPrimary}
+                  onPress={() => {
+                    // Send the user back to the biometric scan UI for another
+                    // try without closing the modal.
+                    setErrorMessage('');
+                    setScanState('idle');
+                    setVerificationStep('initial');
+                  }}
+                >
+                  <Ionicons name="refresh" size={20} color="white" />
+                  <Text style={styles.btnText}>Try Again</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.pinLink}
+                  onPress={() => {
+                    setErrorMessage('');
+                    setScanState('idle');
+                    setVerificationStep('pin');
+                  }}
+                >
+                  <Ionicons name="keypad-outline" size={16} color="#ff8c00" />
+                  <Text style={styles.pinLinkText}>Use PIN instead</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={closeModal}>
+                  <Text style={styles.backLink}>Cancel</Text>
                 </TouchableOpacity>
               </View>
             )}
