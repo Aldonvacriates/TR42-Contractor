@@ -30,6 +30,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { MainFrame } from '../components/MainFrame';
 import { LicenseExpirationBanner } from '../components/LicenseExpirationBanner';
+import { api } from '../utils/api';
 
 import { useTheme }           from '../contexts/ThemeContext';
 import { spacing, radius, fontSize, fonts } from '../constants/theme';
@@ -40,15 +41,37 @@ type Nav = NativeStackNavigationProp<RootStackParamList, 'Profile'>;
 
 export const SETTINGS_BIOMETRIC_KEY  = 'settings:defaultBiometric';
 
-// ── Placeholder contractor data ───────────────────────────────
-// Replace with real data from AuthContext or the backend API
-const CONTRACTOR = {
-  name:         'John Doe',
-  contractorId: '5555555',
-  vendor:       'Ex-Way',
-  email:        'myemail@email.com',
-  phone:        '800-555-5555',
-  address:      '2000 Alee Lane, Lancaster, SC 28550',
+// ── Real contractor data from /api/analytics/profile ──────────
+// The endpoint joins auth_user + contractor and returns one flat object
+// with username, email, first/last name, contact_number, employee_number,
+// status, etc. Used to fill the avatar block + InfoRows below.
+
+interface ProfilePayload {
+  profile?: {
+    auth_user_id?:        string;
+    username?:            string;
+    email?:               string;
+    first_name?:          string;
+    last_name?:           string;
+    contact_number?:      string;
+    alternate_number?:    string;
+    contractor_id?:       string;
+    employee_number?:     string;
+    contractor_status?:   string;
+    is_licensed?:         boolean;
+    is_insured?:          boolean;
+    average_rating?:      number;
+    years_experience?:    number;
+  };
+}
+
+const PLACEHOLDER = {
+  name:         'Loading...',
+  contractorId: '—',
+  vendor:       '—',
+  email:        '—',
+  phone:        '—',
+  address:      '—',
 };
 
 // ── InfoRow ───────────────────────────────────────────────────
@@ -108,6 +131,7 @@ export default function ProfileScreen() {
   const [defaultBiometric, setDefaultBiometric] = useState<'fingerprint' | 'face'>('fingerprint');
   const [draftBiometric,      setDraftBiometric]      = useState<'fingerprint' | 'face'>('fingerprint');
   const [draftReverseStack,   setDraftReverseStack]   = useState(false);
+  const [profile, setProfile] = useState<ProfilePayload['profile'] | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -121,6 +145,35 @@ export default function ProfileScreen() {
     };
     load();
   }, []);
+
+  // Pull the contractor's real profile from /api/analytics/profile.
+  // Endpoint joins auth_user + contractor server-side and filters by the
+  // authenticated contractor, so no id wrangling here.
+  useEffect(() => {
+    let cancelled = false;
+    api.authGet<ProfilePayload>('/api/analytics/profile')
+      .then(d => { if (!cancelled) setProfile(d.profile ?? null); })
+      .catch(() => { /* leave null, render falls back to PLACEHOLDER */ });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Build the displayed contractor object from real data with placeholder
+  // fallbacks so the screen never shows "undefined".
+  const fullName = profile
+    ? [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.username || PLACEHOLDER.name
+    : PLACEHOLDER.name;
+  const contractor = {
+    name:         fullName,
+    contractorId: profile?.employee_number || profile?.contractor_id?.slice(0, 8) || PLACEHOLDER.contractorId,
+    // No vendor name surfaced from the analytics profile endpoint today.
+    // Status of the contractor record is the closest signal we have.
+    vendor:       profile?.contractor_status ? `Status: ${profile.contractor_status}` : PLACEHOLDER.vendor,
+    email:        profile?.email || PLACEHOLDER.email,
+    phone:        profile?.contact_number || PLACEHOLDER.phone,
+    // Address is on a separate `address` table referenced by auth_user.
+    // Not part of the analytics profile endpoint yet, so keep a placeholder.
+    address:      PLACEHOLDER.address,
+  };
 
   const openSettings = () => {
     setDraftBiometric(defaultBiometric);
@@ -170,16 +223,16 @@ export default function ProfileScreen() {
         <View style={[styles.avatarCircle, { backgroundColor: lightMode ? '#c8d8ea' : '#1e2d45' }]}>
           <Ionicons name="person" size={52} color={lightMode ? '#4a6b8a' : '#8a9bb8'} />
         </View>
-        <Text style={[styles.name, { color: colors.textWhite }]}>{CONTRACTOR.name}</Text>
-        <Text style={[styles.metaText, { color: colors.textMuted }]}>Contractor ID: {CONTRACTOR.contractorId}</Text>
-        <Text style={[styles.metaText, { color: colors.textMuted }]}>Vendor: {CONTRACTOR.vendor}</Text>
+        <Text style={[styles.name, { color: colors.textWhite }]}>{contractor.name}</Text>
+        <Text style={[styles.metaText, { color: colors.textMuted }]}>Contractor ID: {contractor.contractorId}</Text>
+        <Text style={[styles.metaText, { color: colors.textMuted }]}>Vendor: {contractor.vendor}</Text>
       </View>
 
       {/* ── Contact info ──────────────────────────────── */}
       <View style={styles.section}>
-        <InfoRow icon="mail-outline"     label="Email"   value={CONTRACTOR.email}   colors={colors} />
-        <InfoRow icon="call-outline"     label="Phone"   value={CONTRACTOR.phone}   colors={colors} />
-        <InfoRow icon="location-outline" label="Address" value={CONTRACTOR.address} colors={colors} />
+        <InfoRow icon="mail-outline"     label="Email"   value={contractor.email}   colors={colors} />
+        <InfoRow icon="call-outline"     label="Phone"   value={contractor.phone}   colors={colors} />
+        <InfoRow icon="location-outline" label="Address" value={contractor.address} colors={colors} />
       </View>
 
       {/* ── Menu rows ─────────────────────────────────── */}
