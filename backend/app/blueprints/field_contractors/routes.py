@@ -1,5 +1,5 @@
 from flask import request, jsonify
-from app.models import AuthUser, Contractor, Ticket, Address, db
+from app.models import AuthUser, Contractor, Ticket, Address, License, db
 from .schemas import contractor_register_schema, contractor_schema, contractor_update_schema
 from ..auth_users.schemas import auth_user_update_schema, auth_user_create_schema
 from ..tickets.schemas import tickets_schema
@@ -7,7 +7,7 @@ from marshmallow import ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from . import field_contractors_bp
 from app.util.auth import encode_token, token_required, vendor_required
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 
 #Register contractor (for testing, delete later)
@@ -187,3 +187,45 @@ def get_assigned_tickets():
         return tickets_schema.jsonify(tickets), 200
     except Exception as e:
         return jsonify({'error': 'Failed to retrieve tickets'}), 500
+
+
+# ── Licenses for the authenticated contractor ───────────────────────────────
+# Used by the Profile screen to render the license expiration banner.
+# Returns each license with a computed `days_until_expiration` so the frontend
+# doesn't have to do date math (negative values mean expired N days ago).
+# Sorted soonest expiration first so the most urgent shows at the top.
+@field_contractors_bp.route('/me/licenses', methods=['GET'])
+@token_required
+def get_my_licenses():
+    contractor = (
+        db.session
+        .query(Contractor)
+        .filter(Contractor.user_id == request.user_id)
+        .first()
+    )
+    if not contractor:
+        return jsonify({'error': 'No contractor record for this user'}), 404
+
+    licenses = (
+        db.session
+        .query(License)
+        .filter(License.contractor_id == contractor.id)
+        .order_by(License.license_expiration_date.asc())
+        .all()
+    )
+
+    today = date.today()
+    payload = [
+        {
+            'id':                       l.id,
+            'license_type':             l.license_type,
+            'license_number':           l.license_number,
+            'license_state':            l.license_state,
+            'license_expiration_date':  l.license_expiration_date.isoformat() if l.license_expiration_date else None,
+            'license_verified':         l.license_verified,
+            'days_until_expiration':    (l.license_expiration_date - today).days if l.license_expiration_date else None,
+        }
+        for l in licenses
+    ]
+
+    return jsonify({'licenses': payload, 'count': len(payload)}), 200
