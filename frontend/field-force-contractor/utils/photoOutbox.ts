@@ -270,6 +270,15 @@ export async function drainPhotoOutbox(): Promise<PhotoDrainResult> {
 // Returns the server-assigned photoId on the 'sent' branch so the inline
 // analyze flow can call /api/ai/analyze-photo without round-tripping
 // through GET /api/photos to find the row by submission_uuid.
+//
+// Implementation note: we deliberately bypass drainPhotoOutbox()'s _draining
+// lock and send our specific row directly. Without this, a periodic
+// background drain (NetworkContext kicks one every offline->online edge,
+// and "Sync now" is user-triggered) racing with our call would set
+// _draining=true, our drain would skip, and we'd report 'queued' even
+// though the photo was successfully uploaded by the background drain.
+// The backend deduplicates on submission_uuid, so a concurrent send of
+// the same row is harmless.
 export async function uploadPhotoOrEnqueue(args: {
   ticketId:  string | number;
   fileUri:   string;
@@ -279,15 +288,31 @@ export async function uploadPhotoOrEnqueue(args: {
   | { status: 'sent';   photoId: string; queueId?: number }
   | { status: 'queued'; queueId: number; error?: string }
 > {
-  // Optimistic path: enqueue first so it's durable, then attempt drain.
-  // If the network is up, drainPhotoOutbox will send it and remove it
-  // immediately. If not, it stays queued. This avoids a race where the
-  // app crashes between fetch() and enqueue().
-  const { id } = await enqueuePhoto(args);
-  const result = await drainPhotoOutbox();
-  const photoId = result.sentPhotoIds?.[id];
-  if (result.drained > 0 && photoId) {
-    return { status: 'sent', photoId, queueId: id };
+  // Step 1: enqueue first so it's durable. If we crash between here and
+  // the upload, the next drain still picks it up.
+  const { id, submissionUuid } = await enqueuePhoto(args);
+
+  // Step 2: build the outbox item from what we just inserted and send it
+  // directly. This sidesteps the drain lock and gives us the photoId.
+  const items = await peekAllPhotos();
+  const ours  = items.find(it => it.submissionUuid === submissionUuid);
+  if (!ours) {
+    // A concurrent drain finished and removed our row before we could
+    // peek. Photo is already on the server but we don't know the id from
+    // here — caller treats this as queued, will be re-analyzable once
+    // listed via GET /api/photos.
+    return { status: 'queued', queueId: id };
   }
-  return { status: 'queued', queueId: id };
+
+  const result = await sendOne(ours);
+  if (result.ok && result.photoId) {
+    // Idempotent: backend dedups on submission_uuid so a concurrent drain
+    // hitting the same row returns the same id; harmless.
+    await removePhoto(ours.id);
+    return { status: 'sent', photoId: result.photoId, queueId: id };
+  }
+
+  // Send failed — leave the row in the outbox for the next drain to retry
+  // or for Complete Task to push through.
+  return { status: 'queued', queueId: id, error: result.error };
 }

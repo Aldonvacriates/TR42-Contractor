@@ -372,9 +372,15 @@ export default function TicketDetailScreen() {
           ticketId: task.id, fileUri: uri, latitude: lat, longitude: lng,
         });
         if (upload.status !== 'sent' || !upload.photoId) {
-          // Queued / offline — analyze needs the server id, can't proceed.
+          // The photo IS durably queued in SQLite, but we don't have the
+          // server id yet so we can't run analyze on it. This is usually
+          // a transient network blip rather than true offline — give the
+          // user a useful retry path rather than a flat "offline".
+          const detail = upload.status === 'queued' && upload.error
+            ? ` (${upload.error})`
+            : '';
           setAnalysisError(
-            "You're offline. The photo is queued and will be analyzable once you reconnect.",
+            `Couldn't upload the photo${detail}. Tap Retry — it usually clears on the second attempt.`,
           );
           return;
         }
