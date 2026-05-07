@@ -30,7 +30,7 @@ def create_app(config_name):
     app.register_blueprint(inspections_bp, url_prefix='/inspections')
     app.register_blueprint(drive_time_bp, url_prefix='/drive-time')
     app.register_blueprint(ai_bp, url_prefix='/api/ai')
-    app.register_blueprint(analytics_bp, url_prefix='/analytics')
+    app.register_blueprint(analytics_bp, url_prefix='/api/analytics')
     app.register_blueprint(photos_bp, url_prefix='/api/photos')
 
     return app
