@@ -41,6 +41,9 @@ export default function TicketDetailScreen() {
   const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
   const [inspectionDone, setInspectionDone] = useState(false);
+  // Real backend ticket data, fetched on mount. Falls back to the
+  // hardcoded placeholder below when null (still loading or fetch failed).
+  const [ticketData, setTicketData] = useState<any | null>(null);
   const pinRefs = useRef<(TextInput | null)[]>([null, null, null, null, null, null]);
 
   // ── Load saved biometric preference ────────────────────────────────────────
@@ -62,10 +65,64 @@ export default function TicketDetailScreen() {
     loadPreference();
   }, []);
 
+  // ── Fetch real ticket data ─────────────────────────────────────────────────
+  // The backend doesn't currently expose GET /tickets/<id>, so we pull the
+  // contractor's full assigned-tickets list and find ours by id. Cheap
+  // enough for a 3-ticket demo, would need a dedicated endpoint at scale.
+  useEffect(() => {
+    let cancelled = false;
+    api.authGet<any[]>('/contractors/assigned-tickets')
+      .then(rows => {
+        if (cancelled) return;
+        const t = (rows ?? []).find((r: any) => r.id === String(taskId));
+        if (t) {
+          setTicketData(t);
+          // Reflect the server-side status into the local UI state so the
+          // primary-action button shows Start vs Complete correctly when
+          // the user reopens a ticket they already started.
+          const s = (t.status || '').toUpperCase();
+          if (s === 'IN_PROGRESS')          setTaskStatus('in_progress');
+          else if (s === 'PENDING_APPROVAL' || s === 'COMPLETED' || s === 'APPROVED') setTaskStatus('completed');
+          else                              setTaskStatus('to_do');
+          if (t.notes && !notes)            setNotes(t.notes);
+        }
+      })
+      .catch(() => { /* keep placeholder data on fetch failure */ });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
 
-  // Auto-close modal after success
+
+  // Auto-close modal after success + persist start to backend
   useEffect(() => {
     if (verificationStep !== 'success') return;
+
+    // Fire-and-forget the real status change to the backend. The schema
+    // requires start_time + lat/lng when transitioning to IN_PROGRESS, so
+    // we read the location captured during the verification step. UI
+    // continues regardless of the API result so a transient network blip
+    // doesn't strand the contractor on the success screen.
+    (async () => {
+      try {
+        const acceptRaw = await AsyncStorage.getItem(acceptLocationKey(taskId));
+        const accept    = acceptRaw ? JSON.parse(acceptRaw) : null;
+        const lat       = accept?.coords?.latitude;
+        const lng       = accept?.coords?.longitude;
+        if (lat == null || lng == null) return;
+
+        await api.authPut(`/tickets/${taskId}`, {
+          status:                       'IN_PROGRESS',
+          start_time:                   new Date().toISOString(),
+          contractor_start_latitude:    lat,
+          contractor_start_longitude:   lng,
+        });
+      } catch {
+        // Non-blocking: backend may already have started this ticket on a
+        // previous attempt, or the network is flaky. Either way, the UI
+        // moves on; the next page reload will reflect server state.
+      }
+    })();
+
     const t = setTimeout(() => {
       setShowVerificationModal(false);
       setTaskStatus('in_progress');
@@ -139,18 +196,48 @@ export default function TicketDetailScreen() {
     setListening(false);
   });
 
+  // Build the displayed task object from real backend data when available,
+  // falling back to the demo placeholders for fields the ticket schema
+  // doesn't currently surface (point of contact, work order location).
+  // Once /tickets/<id> exposes a JOIN with work_order, locationCoords and
+  // location can come from there too.
+  const fmtDeadline = (iso: string | null | undefined) => {
+    if (!iso) return 'No deadline set';
+    try {
+      return new Date(iso).toLocaleString('en-US', {
+        month: 'long', day: 'numeric', year: 'numeric',
+        hour: 'numeric', minute: '2-digit', hour12: true,
+      });
+    } catch { return iso ?? 'No deadline set'; }
+  };
+  const titleFromTicket = (t: any) => {
+    const desc = (t?.description || '').trim();
+    if (t?.service_type) return t.service_type;
+    if (desc) return desc.length > 60 ? `${desc.slice(0, 60)}...` : desc;
+    return `Ticket ${String(t?.id ?? '').slice(0, 8)}`;
+  };
   const task = {
-    id: taskId,
-    title: 'Install Gas Pump at Station #42',
-    deadline: 'March 21, 2026 at 5:00 PM',
-    location: '1234 Main Street, San Francisco, CA 94102',
-    locationCoords: { lat: 37.7749, lng: -122.4194 },
-    inspectionRequired: false,   
-    description: 'Install new gas pump model XR-500 at station #42. Ensure proper connection to underground tank and test all safety mechanisms before completion.',
-    pointOfContact: { name: 'John Martinez', phone: '+1 (555) 012-3456' },
-    photosRequired: 1,
-    photosMax: 5,
+    id:          ticketData?.id ?? taskId,
+    title:       ticketData ? titleFromTicket(ticketData) : 'Loading task...',
+    deadline:    ticketData ? fmtDeadline(ticketData.due_date) : '',
+    // Backend schema doesn't currently surface a human-readable address.
+    // The `route` field on the ticket is a free-text description used by
+    // the dispatcher; we show it in the location slot for now and fall
+    // back to a placeholder if absent. work_order.location would be the
+    // proper source once the schema is extended.
+    location:        ticketData?.route || '1234 Main Street, San Francisco, CA 94102',
+    locationCoords:  { lat: 37.7749, lng: -122.4194 },
+    inspectionRequired: false,
+    description:     ticketData?.description || 'Loading task description...',
+    // pointOfContact is not yet a backend field on `ticket`. Placeholder
+    // keeps the UI populated; a future ticket↔auth_user POC join will
+    // replace this.
+    pointOfContact:  { name: 'John Martinez', phone: '+1 (555) 012-3456' },
+    photosRequired:  1,
+    photosMax:       5,
     photosSubmitted: photoUris.length,
+    priority:        (ticketData?.priority || '').toUpperCase(),
+    serverStatus:    (ticketData?.status || '').toUpperCase(),
   };
 
   // ── TODO: Real data integration ─────────────────────────────────────────────
@@ -306,20 +393,20 @@ export default function TicketDetailScreen() {
         // Non-blocking — submit without end location if GPS fails
       }
 
-      await api.authPut(`/tickets/${taskId}`, {
-        status: 'completed',
+      // Backend schema: status enum is uppercase, lat/lng are separate
+      // numeric fields. The route requires end_time + end lat/lng when
+      // transitioning to PENDING_APPROVAL. start_time + start lat/lng
+      // were already persisted on Start Task; no need to resend.
+      const payload: Record<string, unknown> = {
+        status:    'PENDING_APPROVAL',
         notes,
-        start_time: acceptLoc?.timestamp
-          ? new Date(acceptLoc.timestamp).toISOString()
-          : undefined,
-        contractor_start_location: acceptLoc?.coords
-          ? `${acceptLoc.coords.latitude},${acceptLoc.coords.longitude}`
-          : undefined,
-        end_time: new Date().toISOString(),
-        contractor_end_location: endCoords
-          ? `${endCoords.latitude},${endCoords.longitude}`
-          : undefined,
-      });
+        end_time:  new Date().toISOString(),
+      };
+      if (endCoords) {
+        payload.contractor_end_latitude  = endCoords.latitude;
+        payload.contractor_end_longitude = endCoords.longitude;
+      }
+      await api.authPut(`/tickets/${taskId}`, payload);
 
       await AsyncStorage.removeItem(notesKey(taskId));
       await AsyncStorage.removeItem(acceptLocationKey(taskId));
