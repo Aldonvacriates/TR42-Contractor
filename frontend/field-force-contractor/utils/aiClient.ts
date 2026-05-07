@@ -29,6 +29,11 @@ export interface TicketPhotoSummary {
   created_by:       string;
   updated_by:       string;
   url:              string;
+  /** Saved Gemini-Vision analysis (PhotoAnalysis shape) and timestamp.
+   *  Null on photos that have never been analyzed. Surfaced so callers
+   *  can render the cached result instead of re-calling /api/ai/analyze-photo. */
+  ai_analysis:      PhotoAnalysis | null;
+  ai_analyzed_at:   string | null;
 }
 
 /** Slim shape we need from /contractors/assigned-tickets for the

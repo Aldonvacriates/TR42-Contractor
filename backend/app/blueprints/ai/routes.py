@@ -23,11 +23,17 @@ Routes
 import json
 import logging
 import re
+from datetime import datetime, timezone
 
 from flask import Response, jsonify, request, stream_with_context
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models import AiInspectionReports, Contractor, Ticket, TicketPhoto, db
+
+
+def _utcnow() -> datetime:
+    """Aware UTC timestamp. Mirrors models._utcnow without coupling to it."""
+    return datetime.now(timezone.utc)
 from app.util.auth import token_required
 
 from . import ai_bp
@@ -351,6 +357,14 @@ def analyze_photo():
     if not photo.photo_content:
         raise AIError(AI_BAD_REQUEST, 'photo has no content stored', 400)
 
+    # If we already analyzed this photo and the caller didn't ask for a
+    # fresh take, return the cached result. Saves Gemini quota and lets
+    # the vendor/client review flow show the same answer the contractor
+    # saw at capture time.
+    force_refresh = bool(body.get('refresh'))
+    if photo.ai_analysis and not force_refresh:
+        return jsonify(photo.ai_analysis), 200
+
     # 2048 tokens gives Gemini comfortable headroom to finish the JSON
     # without mid-stream truncation. The prompt + structured schema fit
     # well under that ceiling for any realistic photo analysis.
@@ -361,7 +375,39 @@ def analyze_photo():
         mime_type='image/jpeg',
         max_tokens=2048,
     ))
-    return jsonify(_parse_json_strict(text)), 200
+    analysis = _parse_json_strict(text)
+
+    # Persist the structured result on the photo row so it survives
+    # across sessions and is visible to the vendor/client review flow.
+    try:
+        photo.ai_analysis    = analysis
+        photo.ai_analyzed_at = _utcnow()
+
+        # Auto-flag the parent ticket on a HIGH-severity photo. Closes
+        # Cory's "AI catches a problem" loop — the dashboard's anomaly
+        # count surfaces it without manual escalation. Don't clobber an
+        # anomaly_reason set by another path (e.g. drive-time excursion);
+        # only fill it if empty.
+        if (analysis.get('severity') or '').lower() == 'high':
+            ticket = db.session.query(Ticket).filter(Ticket.id == photo.ticket_id).first()
+            if ticket is not None:
+                ticket.anomaly_flag = True
+                if not (ticket.anomaly_reason or '').strip():
+                    summary = (analysis.get('summary') or '').strip()
+                    ticket.anomaly_reason = (
+                        f'AI photo review (HIGH severity): {summary[:240]}'
+                        if summary else 'AI photo review flagged HIGH severity'
+                    )
+
+        db.session.commit()
+    except Exception:
+        # Persistence is non-fatal — the contractor still gets the
+        # analysis even if the save fails. Log and roll back so the
+        # session is clean for the next request.
+        log.exception('Failed to persist photo analysis for photo_id=%s', photo_id)
+        db.session.rollback()
+
+    return jsonify(analysis), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────

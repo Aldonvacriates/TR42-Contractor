@@ -680,6 +680,14 @@ class TicketPhoto(Base):
     submission_uuid: Mapped[str] = mapped_column(Text, nullable=True, unique=True)
     content_hash: Mapped[str] = mapped_column(Text, nullable=True, index=True)
 
+    # Persisted Gemini-Vision analysis. Schema mirrors the PhotoAnalysis
+    # surface: {summary, severity, concerns[], recommendations[]}. Null
+    # until the contractor first taps Analyze on the photo. Saved server
+    # side so the result survives across sessions, is visible to the
+    # vendor/client review flow, and we don't burn fresh quota on re-open.
+    ai_analysis: Mapped[dict] = mapped_column(JSON, nullable=True)
+    ai_analyzed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey('auth_user.id'), nullable=False)
