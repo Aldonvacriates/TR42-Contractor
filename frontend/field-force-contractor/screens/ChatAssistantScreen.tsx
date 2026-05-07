@@ -7,15 +7,19 @@
 
 import { FC, useEffect, useRef, useState } from 'react'
 import {
+    Alert,
     Animated,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     ScrollView,
+    Share,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native'
+import * as ImagePicker from 'expo-image-picker'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation } from '@react-navigation/native'
 import { MainFrame } from '@/components/MainFrame'
@@ -229,7 +233,124 @@ export const ChatAssistantScreen: FC = () => {
     const [suggestionsVisible, setSuggestions] = useState(true)
     const scrollRef                            = useRef<ScrollView>(null)
 
+    // Optional photo to attach to the conversation when the contractor
+    // chooses to save it. URI lives in component state — only matters at
+    // save time. Cleared on restart.
+    const [attachedPhotoUri, setAttachedPhotoUri] = useState<string | null>(null)
+    const [saveModalOpen, setSaveModalOpen]       = useState(false)
+
     const scroll = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
+
+    // ── Restart the conversation ────────────────────────────────────────
+    // Pull-to-refresh fires this. Clears every bubble, brings back the
+    // welcome card and the rotating OSHA chips, and drops any attached
+    // photo. We confirm because the contractor might have just spent a
+    // few minutes building context with the assistant.
+    const restartChat = () => {
+        return new Promise<void>(resolve => {
+            if (bubbles.length === 0) {
+                // Nothing to lose — just bounce.
+                setAttachedPhotoUri(null)
+                resolve()
+                return
+            }
+            Alert.alert(
+                'Start a new conversation?',
+                'This clears the current questions and answers. The assistant has no memory across conversations, so anything you said will be lost.',
+                [
+                    { text: 'Cancel', style: 'cancel', onPress: () => resolve() },
+                    {
+                        text: 'Start New', style: 'destructive', onPress: () => {
+                            setBubbles([])
+                            setSuggestions(true)
+                            setAttachedPhotoUri(null)
+                            resolve()
+                        },
+                    },
+                ],
+            )
+        })
+    }
+
+    // ── Save / share the conversation ───────────────────────────────────
+    // Builds a clean markdown transcript the contractor can email, save
+    // to Notes, send to a supervisor, or drop into a ticket comment.
+    // If a photo is attached, the share sheet sends the image alongside
+    // the transcript so the recipient sees the context.
+    const buildTranscript = (): string => {
+        const header = '# Field Assistant Conversation'
+        const stamp  = `Saved ${new Date().toLocaleString()}`
+        if (bubbles.length === 0) {
+            return `${header}\n${stamp}\n\n(Empty conversation)`
+        }
+        const turns = bubbles.map(b => {
+            const who = b.role === 'user' ? 'Contractor' : 'Assistant'
+            return `**${who}** · ${b.timeStamp}\n${b.text}`
+        }).join('\n\n')
+        return `${header}\n${stamp}\n\n${turns}`
+    }
+
+    const pickPhotoForChat = async () => {
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Photo library permission needed',
+                    'Allow library access in Settings to attach a photo.',
+                )
+                return
+            }
+            const res = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                quality:    0.7,
+            })
+            if (!res.canceled && res.assets[0]?.uri) {
+                setAttachedPhotoUri(res.assets[0].uri)
+            }
+        } catch (err: any) {
+            Alert.alert('Photo library error', err?.message ?? 'Could not open the photo library.')
+        }
+    }
+
+    const takePhotoForChat = async () => {
+        try {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync()
+            if (status !== 'granted') {
+                Alert.alert(
+                    'Camera permission needed',
+                    'Allow camera access in Settings to capture a photo.',
+                )
+                return
+            }
+            const res = await ImagePicker.launchCameraAsync({
+                mediaTypes: ['images'],
+                quality:    0.7,
+            })
+            if (!res.canceled && res.assets[0]?.uri) {
+                setAttachedPhotoUri(res.assets[0].uri)
+            }
+        } catch (err: any) {
+            Alert.alert('Camera error', err?.message ?? 'Could not open the camera.')
+        }
+    }
+
+    const shareConversation = async () => {
+        try {
+            const message = buildTranscript()
+            // React Native's Share API exposes the system share sheet — the
+            // user picks the destination (Mail, Notes, Slack, Files...).
+            // When a photo is attached we pass it as the `url`; iOS bundles
+            // it alongside the message into the share extension's payload.
+            await Share.share({
+                title:   'Field Assistant Conversation',
+                message,
+                ...(attachedPhotoUri ? { url: attachedPhotoUri } : {}),
+            })
+            setSaveModalOpen(false)
+        } catch (err: any) {
+            Alert.alert('Couldn\'t share', err?.message ?? 'Try again.')
+        }
+    }
 
     const send = async (text: string) => {
         const trimmed = text.trim()
@@ -290,7 +411,38 @@ export const ChatAssistantScreen: FC = () => {
             style={{ flex: 1 }}
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-            <MainFrame headerMenu={['Menu2', ['Field Assistant']]} injectFooter={<Footer />}>
+            <MainFrame
+                headerMenu={['Menu2', ['Field Assistant']]}
+                injectFooter={<Footer />}
+                // Pull-to-refresh on the chat means "start over". The
+                // assistant has no memory across conversations so this is
+                // the natural way to reset for a fresh question.
+                onRefresh={restartChat}
+            >
+                {/* Action row: Save / Share above the welcome so contractors
+                    can always reach it without scrolling to the end of a long
+                    transcript. Disabled when there's nothing to save yet. */}
+                <View style={s.actionRow}>
+                    <TouchableOpacity
+                        style={[s.actionBtn, bubbles.length === 0 && s.actionBtnDisabled]}
+                        onPress={() => bubbles.length > 0 && setSaveModalOpen(true)}
+                        disabled={bubbles.length === 0}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="bookmark-outline" size={14} color="#a78bfa" />
+                        <Text style={s.actionBtnText}>Save / Share</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                        style={[s.actionBtn, bubbles.length === 0 && s.actionBtnDisabled]}
+                        onPress={restartChat}
+                        disabled={bubbles.length === 0}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="refresh" size={14} color="#a78bfa" />
+                        <Text style={s.actionBtnText}>New Chat</Text>
+                    </TouchableOpacity>
+                </View>
+
                 <ScrollView
                     ref={scrollRef}
                     style={s.scroll}
@@ -363,6 +515,104 @@ export const ChatAssistantScreen: FC = () => {
                     {loading && <TypingIndicator />}
 
                 </ScrollView>
+
+                {/* ── Save / share modal ───────────────────────────────────
+                    Builds a markdown transcript of the conversation and
+                    hands it to the system share sheet. Optional photo
+                    attachment so the contractor can save the chat with the
+                    job-site image that prompted the question. */}
+                <Modal
+                    visible={saveModalOpen}
+                    transparent
+                    animationType="fade"
+                    onRequestClose={() => setSaveModalOpen(false)}
+                >
+                    <View style={s.modalOverlay}>
+                        <View style={s.saveModal}>
+                            <View style={s.saveHeader}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Ionicons name="bookmark" size={16} color="#a78bfa" />
+                                    <Text style={s.saveTitle}>Save this conversation</Text>
+                                </View>
+                                <TouchableOpacity
+                                    onPress={() => setSaveModalOpen(false)}
+                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                >
+                                    <Ionicons name="close" size={22} color="#9ca3af" />
+                                </TouchableOpacity>
+                            </View>
+
+                            <Text style={s.saveBody}>
+                                Bundles your questions and the assistant's answers into a
+                                shareable transcript you can email, save to Notes, or attach
+                                to a ticket comment. Optionally attach a photo for context.
+                            </Text>
+
+                            <View style={s.saveStats}>
+                                <Ionicons name="chatbubbles-outline" size={14} color="#a78bfa" />
+                                <Text style={s.saveStatsText}>
+                                    {bubbles.filter(b => b.role === 'user').length} questions ·{' '}
+                                    {bubbles.filter(b => b.role === 'assistant').length} answers
+                                </Text>
+                            </View>
+
+                            {/* Photo attachment slot */}
+                            <View style={s.attachRow}>
+                                {attachedPhotoUri ? (
+                                    <View style={s.attachedPhotoWrap}>
+                                        <View style={s.attachedPhotoBadge}>
+                                            <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+                                            <Text style={s.attachedPhotoText}>Photo attached</Text>
+                                        </View>
+                                        <TouchableOpacity
+                                            onPress={() => setAttachedPhotoUri(null)}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        >
+                                            <Ionicons name="close-circle" size={18} color="#ef4444" />
+                                        </TouchableOpacity>
+                                    </View>
+                                ) : (
+                                    <View style={s.attachActions}>
+                                        <TouchableOpacity
+                                            style={s.attachBtn}
+                                            onPress={takePhotoForChat}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="camera" size={14} color="#a78bfa" />
+                                            <Text style={s.attachBtnText}>Take Photo</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={s.attachBtn}
+                                            onPress={pickPhotoForChat}
+                                            activeOpacity={0.8}
+                                        >
+                                            <Ionicons name="images" size={14} color="#a78bfa" />
+                                            <Text style={s.attachBtnText}>From Library</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                )}
+                            </View>
+
+                            <View style={s.saveActions}>
+                                <TouchableOpacity
+                                    style={s.savePrimaryBtn}
+                                    onPress={shareConversation}
+                                    activeOpacity={0.85}
+                                >
+                                    <Ionicons name="share-outline" size={18} color="white" />
+                                    <Text style={s.savePrimaryBtnText}>Save / Share</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={s.saveCancelBtn}
+                                    onPress={() => setSaveModalOpen(false)}
+                                    activeOpacity={0.85}
+                                >
+                                    <Text style={s.saveCancelBtnText}>Cancel</Text>
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
             </MainFrame>
         </KeyboardAvoidingView>
     )
@@ -564,5 +814,151 @@ const s = StyleSheet.create({
         height:          6,
         borderRadius:    3,
         backgroundColor: 'rgba(255,255,255,0.7)',
+    },
+
+    // ── Action row above the welcome card (Save / New Chat) ─────────────
+    actionRow: {
+        flexDirection:     'row',
+        gap:               8,
+        paddingHorizontal: 16,
+        paddingTop:        10,
+        paddingBottom:     2,
+        justifyContent:    'flex-end',
+    },
+    actionBtn: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               6,
+        paddingVertical:   6,
+        paddingHorizontal: 12,
+        borderRadius:      999,
+        backgroundColor:   'rgba(167,139,250,0.10)',
+        borderWidth:       1,
+        borderColor:       'rgba(167,139,250,0.25)',
+    },
+    actionBtnDisabled: { opacity: 0.4 },
+    actionBtnText: {
+        fontFamily: 'poppins-bold',
+        fontSize:   11,
+        color:      '#a78bfa',
+        letterSpacing: 0.3,
+    },
+
+    // ── Save / share modal ──────────────────────────────────────────────
+    modalOverlay: {
+        flex:            1,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        alignItems:      'center',
+        justifyContent:  'center',
+        padding:         16,
+    },
+    saveModal: {
+        width:           '92%',
+        backgroundColor: '#0f172a',
+        borderWidth:     1,
+        borderColor:     'rgba(167,139,250,0.25)',
+        borderRadius:    16,
+        padding:         18,
+        gap:             14,
+    },
+    saveHeader: {
+        flexDirection:  'row',
+        alignItems:     'center',
+        justifyContent: 'space-between',
+    },
+    saveTitle: {
+        fontFamily:    'poppins-bold',
+        fontSize:      14,
+        color:         '#ffffff',
+        letterSpacing: 0.3,
+    },
+    saveBody: {
+        fontFamily: 'poppins-regular',
+        fontSize:   12,
+        color:      'rgba(255,255,255,0.65)',
+        lineHeight: 17,
+    },
+    saveStats: {
+        flexDirection: 'row',
+        alignItems:    'center',
+        gap:           6,
+        paddingVertical:   6,
+        paddingHorizontal: 10,
+        borderRadius:      8,
+        backgroundColor:   'rgba(167,139,250,0.08)',
+        alignSelf:         'flex-start',
+    },
+    saveStatsText: {
+        fontFamily: 'poppins-regular',
+        fontSize:   11,
+        color:      '#a78bfa',
+    },
+    attachRow: { gap: 8 },
+    attachActions: { flexDirection: 'row', gap: 8 },
+    attachBtn: {
+        flex:              1,
+        flexDirection:     'row',
+        alignItems:        'center',
+        justifyContent:    'center',
+        gap:               6,
+        paddingVertical:   10,
+        borderRadius:      10,
+        backgroundColor:   'rgba(255,255,255,0.04)',
+        borderWidth:       1,
+        borderColor:       'rgba(167,139,250,0.25)',
+    },
+    attachBtnText: {
+        fontFamily: 'poppins-bold',
+        fontSize:   12,
+        color:      '#a78bfa',
+    },
+    attachedPhotoWrap: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        justifyContent:    'space-between',
+        paddingVertical:   10,
+        paddingHorizontal: 12,
+        borderRadius:      10,
+        backgroundColor:   'rgba(52,211,153,0.08)',
+        borderWidth:       1,
+        borderColor:       'rgba(52,211,153,0.25)',
+    },
+    attachedPhotoBadge: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    attachedPhotoText: {
+        fontFamily: 'poppins-bold',
+        fontSize:   12,
+        color:      '#34d399',
+    },
+    saveActions: { flexDirection: 'row', gap: 10, marginTop: 4 },
+    savePrimaryBtn: {
+        flex:            2,
+        flexDirection:   'row',
+        alignItems:      'center',
+        justifyContent:  'center',
+        gap:             8,
+        backgroundColor: '#a78bfa',
+        borderRadius:    12,
+        paddingVertical: 14,
+    },
+    savePrimaryBtnText: {
+        fontFamily:    'poppins-bold',
+        fontSize:      14,
+        color:         '#0f172a',
+        letterSpacing: 0.3,
+    },
+    saveCancelBtn: {
+        flex:            1,
+        alignItems:      'center',
+        justifyContent:  'center',
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth:     1,
+        borderColor:     'rgba(255,255,255,0.15)',
+        borderRadius:    12,
+        paddingVertical: 14,
+    },
+    saveCancelBtnText: {
+        fontFamily: 'poppins-bold',
+        fontSize:   13,
+        color:      'rgba(255,255,255,0.75)',
     },
 })
