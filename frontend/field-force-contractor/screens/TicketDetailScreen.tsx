@@ -9,6 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SETTINGS_BIOMETRIC_KEY } from './ProfileScreen';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { api } from '../utils/api';
 
@@ -439,14 +440,41 @@ export default function TicketDetailScreen() {
     setScanState('idle');
   };
 
-  const handleBiometricAuth = () => {
+  const handleBiometricAuth = async () => {
     if (scanState === 'scanning') return;
     setScanState('scanning');
     setErrorMessage('');
 
-    setTimeout(() => {
-      setVerificationStep('location');
-    }, 1500);
+    try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const enrolled    = await LocalAuthentication.isEnrolledAsync();
+
+      if (!hasHardware || !enrolled) {
+        setScanState('idle');
+        setVerificationStep('error');
+        setErrorMessage('Biometrics not available. Please use PIN.');
+        return;
+      }
+
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage:         'Verify identity to start task',
+        cancelLabel:           'Cancel',
+        disableDeviceFallback: false,
+      });
+
+      if (result.success) {
+        setScanState('idle');
+        setVerificationStep('location');
+      } else {
+        setScanState('idle');
+        setVerificationStep('error');
+        setErrorMessage('Biometric scan failed. Please try again or use PIN.');
+      }
+    } catch {
+      setScanState('idle');
+      setVerificationStep('error');
+      setErrorMessage('Biometric scan failed. Please try again or use PIN.');
+    }
   };
 
   const handlePinAuth = () => {
