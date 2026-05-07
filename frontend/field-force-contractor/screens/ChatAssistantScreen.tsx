@@ -17,6 +17,7 @@ import {
     View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { useNavigation } from '@react-navigation/native'
 import { MainFrame } from '@/components/MainFrame'
 import { SearchBar } from '@/components/SearchBar'
 import { InitID } from '@/utils/InitID'
@@ -222,6 +223,7 @@ const RotatingTemplates: FC<{ onPick: (label: string) => void }> = ({ onPick }) 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
 export const ChatAssistantScreen: FC = () => {
+    const navigation                           = useNavigation<any>()
     const [bubbles, setBubbles]                = useState<Bubble[]>([])
     const [loading, setLoading]                = useState(false)
     const [suggestionsVisible, setSuggestions] = useState(true)
@@ -307,6 +309,42 @@ export const ChatAssistantScreen: FC = () => {
                         <Text style={s.welcomeBody}>{WELCOME_TEXT}</Text>
                     </View>
 
+                    {/* AI hub shortcuts — quick access to the two non-chat AI flows
+                        (photo analysis with Gemini vision, and the streaming
+                        inspection-report generator from voice notes). The chat
+                        itself stays the default surface; these are side doors. */}
+                    {suggestionsVisible && (
+                        <View style={s.hubRow}>
+                            <TouchableOpacity
+                                style={s.hubCard}
+                                onPress={() => navigation.navigate('PhotoReview')}
+                                activeOpacity={0.8}
+                            >
+                                <View style={[s.hubIconWrap, { backgroundColor: 'rgba(52,211,153,0.12)', borderColor: 'rgba(52,211,153,0.3)' }]}>
+                                    <Ionicons name="camera" size={18} color="#34d399" />
+                                </View>
+                                <Text style={s.hubCardTitle}>Analyze a Photo</Text>
+                                <Text style={s.hubCardBody}>
+                                    Run Gemini vision on a ticket photo for safety + OSHA concerns.
+                                </Text>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={s.hubCard}
+                                onPress={() => navigation.navigate('InspectionAssist')}
+                                activeOpacity={0.8}
+                            >
+                                <View style={[s.hubIconWrap, { backgroundColor: 'rgba(167,139,250,0.12)', borderColor: 'rgba(167,139,250,0.3)' }]}>
+                                    <Ionicons name="document-text" size={18} color="#a78bfa" />
+                                </View>
+                                <Text style={s.hubCardTitle}>Inspection Report</Text>
+                                <Text style={s.hubCardBody}>
+                                    Turn voice notes into a structured report with citations.
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
+
                     {/* OSHA-citation template chips — rotate every few seconds with a
                         fade animation so contractors see fresh starter prompts. */}
                     {suggestionsVisible && <RotatingTemplates onPick={send} />}
@@ -371,6 +409,41 @@ const s = StyleSheet.create({
         color:      'rgba(255,255,255,0.55)',
         textAlign:  'center',
         lineHeight: 20,
+    },
+
+    hubRow: {
+        flexDirection: 'row',
+        gap:           10,
+        marginTop:     6,
+        marginBottom:  4,
+    },
+    hubCard: {
+        flex:            1,
+        backgroundColor: 'rgba(255,255,255,0.04)',
+        borderWidth:     1,
+        borderColor:     'rgba(255,255,255,0.08)',
+        borderRadius:    14,
+        padding:         12,
+        gap:             8,
+    },
+    hubIconWrap: {
+        width:          32,
+        height:         32,
+        borderRadius:   16,
+        borderWidth:    1,
+        alignItems:     'center',
+        justifyContent: 'center',
+    },
+    hubCardTitle: {
+        fontFamily: 'poppins-bold',
+        fontSize:   13,
+        color:      '#ffffff',
+    },
+    hubCardBody: {
+        fontFamily: 'poppins-regular',
+        fontSize:   11,
+        color:      'rgba(255,255,255,0.55)',
+        lineHeight: 15,
     },
 
     chipsRow:        { gap: 6, marginTop: 4 },
