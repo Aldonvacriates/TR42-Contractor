@@ -10,6 +10,7 @@ import { SETTINGS_BIOMETRIC_KEY } from './ProfileScreen';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
+import { verifyOfflinePin } from '../utils/secureStorage';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { api } from '../utils/api';
 
@@ -531,13 +532,16 @@ export default function TicketDetailScreen() {
     }
   };
 
-  const handlePinAuth = () => {
+  const handlePinAuth = async () => {
     const pinString = pin.join('');
     if (pinString.length !== 6) {
       setErrorMessage('Please enter a complete 6-digit PIN');
       return;
     }
-    if (pinString !== '123456') {
+    // Source of truth lives in secureStorage.verifyOfflinePin so the
+    // OfflineLogin screen and this in-task verification stay in sync.
+    const ok = await verifyOfflinePin(pinString);
+    if (!ok) {
       setVerificationStep('error');
       setErrorMessage('Invalid PIN. Please try again.');
       setPin(['', '', '', '', '', '']);
