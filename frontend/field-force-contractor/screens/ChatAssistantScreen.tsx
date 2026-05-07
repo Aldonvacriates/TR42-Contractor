@@ -26,7 +26,13 @@ import { MainFrame } from '@/components/MainFrame'
 import { SearchBar } from '@/components/SearchBar'
 import { InitID } from '@/utils/InitID'
 import { TimeFormater } from '@/utils/timeFormater'
-import { chat, ChatMessage as AIChatMessage, friendlyAIError } from '@/utils/aiClient'
+import {
+    chat,
+    ChatMessage as AIChatMessage,
+    friendlyAIError,
+    saveChat,
+    SavedChatMessage,
+} from '@/utils/aiClient'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -238,6 +244,8 @@ export const ChatAssistantScreen: FC = () => {
     // save time. Cleared on restart.
     const [attachedPhotoUri, setAttachedPhotoUri] = useState<string | null>(null)
     const [saveModalOpen, setSaveModalOpen]       = useState(false)
+    const [savingChat, setSavingChat]             = useState(false)
+    const [savedAt,    setSavedAt]                = useState<string | null>(null)
 
     const scroll = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
 
@@ -264,6 +272,7 @@ export const ChatAssistantScreen: FC = () => {
                             setBubbles([])
                             setSuggestions(true)
                             setAttachedPhotoUri(null)
+                            setSavedAt(null)
                             resolve()
                         },
                     },
@@ -334,21 +343,68 @@ export const ChatAssistantScreen: FC = () => {
         }
     }
 
-    const shareConversation = async () => {
+    // Saved Reports already lists ai_inspection_reports; adding the chat
+    // session through the same SavedReports surface is what lets the
+    // contractor "find this conversation again later" the way they would
+    // an inspection report. Build a title from the first user question
+    // (truncated) and a one-line summary so the list view stays readable.
+    const buildTitle = (): string => {
+        const firstUserMsg = bubbles.find(b => b.role === 'user')?.text?.trim() ?? ''
+        if (firstUserMsg) {
+            return firstUserMsg.length > 80 ? `${firstUserMsg.slice(0, 80)}...` : firstUserMsg
+        }
+        return `Conversation · ${new Date().toLocaleDateString()}`
+    }
+    const buildSummary = (): string | null => {
+        const firstAssistantMsg = bubbles.find(b => b.role === 'assistant')?.text?.trim() ?? ''
+        if (!firstAssistantMsg) return null
+        return firstAssistantMsg.length > 200
+            ? `${firstAssistantMsg.slice(0, 200)}...`
+            : firstAssistantMsg
+    }
+
+    // Persist the conversation through the same backend pattern as
+    // saveReport — POST /api/ai/save-chat — so SavedReports can list it
+    // alongside inspection reports. The system share sheet still fires so
+    // the contractor can email / send a copy on top of having it stored.
+    const saveAndShare = async () => {
+        if (savingChat || bubbles.length === 0) return
+        setSavingChat(true)
         try {
-            const message = buildTranscript()
-            // React Native's Share API exposes the system share sheet — the
-            // user picks the destination (Mail, Notes, Slack, Files...).
-            // When a photo is attached we pass it as the `url`; iOS bundles
-            // it alongside the message into the share extension's payload.
+            const messages: SavedChatMessage[] = bubbles.map(b => ({
+                role:      b.role,
+                content:   b.text,
+                timestamp: b.timeStamp,
+            }))
+            // The backend ai_chat_session.photo_id FKs ticket_photo, which
+            // requires a server-side photo id. The picker on this screen
+            // only produces a local URI, so we leave photo_id null for
+            // now and just include the photo in the system-share payload.
+            // A future iteration could upload the photo to a generic
+            // contractor-bucket first to persist it server-side.
+            await saveChat({
+                title:    buildTitle(),
+                summary:  buildSummary(),
+                messages,
+                photoId:  null,
+            })
+            setSavedAt(new Date().toLocaleTimeString())
+
+            // Then open the share sheet so the contractor can email/Notes
+            // /Slack the transcript on top of having it saved server-side.
             await Share.share({
                 title:   'Field Assistant Conversation',
-                message,
+                message: buildTranscript(),
                 ...(attachedPhotoUri ? { url: attachedPhotoUri } : {}),
             })
             setSaveModalOpen(false)
         } catch (err: any) {
-            Alert.alert('Couldn\'t share', err?.message ?? 'Try again.')
+            Alert.alert(
+                'Couldn\'t save chat',
+                friendlyAIError(err) ?? err?.message ?? 'Try again.',
+            )
+        } finally {
+            setSavingChat(false)
         }
     }
 
@@ -593,14 +649,30 @@ export const ChatAssistantScreen: FC = () => {
                                 )}
                             </View>
 
+                            {savedAt && (
+                                <View style={s.savedAtBanner}>
+                                    <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+                                    <Text style={s.savedAtText}>
+                                        Saved at {savedAt} — find it in Saved Reports
+                                    </Text>
+                                </View>
+                            )}
+
                             <View style={s.saveActions}>
                                 <TouchableOpacity
-                                    style={s.savePrimaryBtn}
-                                    onPress={shareConversation}
+                                    style={[s.savePrimaryBtn, savingChat && { opacity: 0.6 }]}
+                                    onPress={saveAndShare}
+                                    disabled={savingChat}
                                     activeOpacity={0.85}
                                 >
-                                    <Ionicons name="share-outline" size={18} color="white" />
-                                    <Text style={s.savePrimaryBtnText}>Save / Share</Text>
+                                    {savingChat ? (
+                                        <Ionicons name="cloud-upload-outline" size={18} color="#0f172a" />
+                                    ) : (
+                                        <Ionicons name="save-outline" size={18} color="#0f172a" />
+                                    )}
+                                    <Text style={s.savePrimaryBtnText}>
+                                        {savingChat ? 'Saving…' : 'Save & Share'}
+                                    </Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={s.saveCancelBtn}
@@ -927,6 +999,22 @@ const s = StyleSheet.create({
     attachedPhotoText: {
         fontFamily: 'poppins-bold',
         fontSize:   12,
+        color:      '#34d399',
+    },
+    savedAtBanner: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               6,
+        paddingVertical:   6,
+        paddingHorizontal: 10,
+        borderRadius:      8,
+        backgroundColor:   'rgba(52,211,153,0.12)',
+        borderWidth:       1,
+        borderColor:       'rgba(52,211,153,0.25)',
+    },
+    savedAtText: {
+        fontFamily: 'poppins-bold',
+        fontSize:   11,
         color:      '#34d399',
     },
     saveActions: { flexDirection: 'row', gap: 10, marginTop: 4 },

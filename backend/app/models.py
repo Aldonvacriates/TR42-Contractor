@@ -1101,3 +1101,26 @@ class AiInspectionReports(Base):
     recommended_actions: Mapped[str] = mapped_column(String(3000), nullable=False)
     raw_notes: Mapped[str] = mapped_column(String(2000), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+
+
+class AiChatSession(Base):
+    """Saved Field Assistant conversation. Mirrors AiInspectionReports so the
+    same SavedReports surface lists both reports and chats.
+
+    Lives on Supabase as `ai_chat_session` (created via the
+    add_ai_chat_session migration). contractor_id stores auth_user.id to
+    stay consistent with how AiInspectionReports owns its rows. messages
+    is the full {role, content, timestamp} array as JSON. photo_id is
+    optional and points at a TicketPhoto row when the contractor attached
+    a job-site image at save time.
+    """
+    __tablename__ = 'ai_chat_session'
+
+    id:            Mapped[str]      = mapped_column(String, primary_key=True, default=_new_uuid)
+    contractor_id: Mapped[str]      = mapped_column(ForeignKey('auth_user.id'), nullable=False, index=True)
+    title:         Mapped[str]      = mapped_column(String(300), nullable=False)
+    summary:       Mapped[str]      = mapped_column(String(500), nullable=True)
+    messages:      Mapped[list]     = mapped_column(JSON, nullable=False)
+    photo_id:      Mapped[str]      = mapped_column(ForeignKey('ticket_photo.id'), nullable=True)
+    created_at:    Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=False)
+    updated_at:    Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)

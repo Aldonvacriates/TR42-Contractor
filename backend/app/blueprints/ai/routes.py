@@ -28,7 +28,7 @@ from datetime import datetime, timezone
 from flask import Response, jsonify, request, stream_with_context
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.models import AiInspectionReports, Contractor, Ticket, TicketPhoto, db
+from app.models import AiChatSession, AiInspectionReports, Contractor, Ticket, TicketPhoto, db
 
 
 def _utcnow() -> datetime:
@@ -48,11 +48,14 @@ from .errors import (
 )
 from .providers import get_provider, resilient_call
 from .schemas import (
+    ai_chat_session_schema,
+    ai_chat_sessions_schema,
     ai_report_schema,
     ai_reports_schema,
     chat_schema,
     inspection_assist_schema,
     refine_report_schema,
+    save_chat_schema,
     save_report_schema,
 )
 
@@ -486,3 +489,75 @@ def get_reports():
         item['recommended_actions'] = json.loads(row.recommended_actions)
 
     return jsonify(results), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/ai/save-chat
+# Persist a Field Assistant conversation to the local DB. Mirrors save-report
+# so SavedReports lists both kinds of saved AI artefact through one screen.
+# ─────────────────────────────────────────────────────────────────────────────
+@ai_bp.route('/save-chat', methods=['POST'])
+@token_required
+@handle_ai_errors
+def save_chat():
+    data = save_chat_schema.load(request.get_json() or {})
+
+    # Optional photo attachment must belong to a ticket the caller is
+    # actually assigned to. Re-validate here so a contractor can't bind
+    # someone else's photo to their saved chat.
+    photo_id = data.get('photo_id')
+    if photo_id:
+        contractor = (
+            db.session.query(Contractor)
+            .filter(Contractor.user_id == request.user_id)
+            .first()
+        )
+        if not contractor:
+            raise AIError(AI_BAD_REQUEST, 'no contractor record for this user', 400)
+        owns_photo = (
+            db.session.query(TicketPhoto)
+            .join(Ticket, TicketPhoto.ticket_id == Ticket.id)
+            .filter(
+                TicketPhoto.id == photo_id,
+                Ticket.assigned_contractor == contractor.id,
+            )
+            .first()
+        )
+        if not owns_photo:
+            # 404 instead of 403 so we don't leak whether the photo exists.
+            raise AIError(AI_NOT_FOUND, 'attached photo not found', 404)
+
+    session = AiChatSession(
+        contractor_id = request.user_id,
+        title         = data['title'],
+        summary       = data.get('summary'),
+        messages      = data['messages'],
+        photo_id      = photo_id,
+    )
+    db.session.add(session)
+    try:
+        db.session.commit()
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        log.exception('Failed to save AI chat session')
+        raise AIError(AI_INTERNAL, f'Could not save chat: {e}', 500)
+
+    return jsonify(ai_chat_session_schema.dump(session)), 201
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/ai/chats
+# Returns saved Field Assistant conversations for the logged-in contractor,
+# newest first.
+# ─────────────────────────────────────────────────────────────────────────────
+@ai_bp.route('/chats', methods=['GET'])
+@token_required
+@handle_ai_errors
+def get_chats():
+    sessions = (
+        db.session.query(AiChatSession)
+        .filter_by(contractor_id=request.user_id)
+        .order_by(AiChatSession.created_at.desc())
+        .all()
+    )
+    return jsonify(ai_chat_sessions_schema.dump(sessions)), 200
