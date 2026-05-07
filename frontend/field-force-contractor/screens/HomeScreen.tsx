@@ -5,6 +5,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { MainFrame } from '../components/MainFrame';
+import { DriveTimeStatusBar } from '../components/DriveTimeStatusBar';
 import { useAuth } from '../contexts/AuthContext';
 
 // ─── DEV MODE — set to false before shipping ──────────────────────────────────
@@ -69,6 +70,11 @@ export default function HomeScreen() {
                 {/* [Component12 / Logo goes here] */}
                 <Text style={styles.welcome}>Welcome back!</Text>
             </View>
+
+            {/* ── Drive time alert (Cory stakeholder ask) ── */}
+            {/* Renders only when remaining drive time is within 60 minutes of
+                the FMCSA daily limit. Tap to navigate to DriveTimeTracker. */}
+            <DriveTimeStatusBar />
 
             {/* ── Status Selector ── */}
             <View style={styles.section}>
