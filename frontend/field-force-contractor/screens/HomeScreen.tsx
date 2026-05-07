@@ -94,19 +94,21 @@ export default function HomeScreen() {
     // Pull real dashboard stats + recent jobs from the analytics blueprint.
     // Both endpoints filter by the authenticated contractor server-side, so
     // no contractor-id wrangling needed here.
+    //
+    // Wrapped so pull-to-refresh can reuse the same fetch path.
+    const fetchDashboard = async () => {
+        const [statsResult, jobsResult] = await Promise.allSettled([
+            api.authGet<DashboardStats>('/api/analytics/dashboard/stats'),
+            api.authGet<JobsResponse>('/api/analytics/jobs?limit=5'),
+        ]);
+        if (statsResult.status === 'fulfilled') setStats(statsResult.value);
+        if (jobsResult.status === 'fulfilled')  setRecentJobs(jobsResult.value.jobs ?? []);
+        setStatsLoading(false);
+        setJobsLoading(false);
+    };
+
     useEffect(() => {
-        let cancelled = false;
-        api.authGet<DashboardStats>('/api/analytics/dashboard/stats')
-            .then(d => { if (!cancelled) setStats(d); })
-            .catch(() => { /* leave null, render falls back to placeholders */ })
-            .finally(() => { if (!cancelled) setStatsLoading(false); });
-
-        api.authGet<JobsResponse>('/api/analytics/jobs?limit=5')
-            .then(d => { if (!cancelled) setRecentJobs(d.jobs ?? []); })
-            .catch(() => { if (!cancelled) setRecentJobs([]); })
-            .finally(() => { if (!cancelled) setJobsLoading(false); });
-
-        return () => { cancelled = true; };
+        fetchDashboard().catch(() => {});
     }, []);
 
     const currentStatusData = statusOptions.find(s => s.value === currentStatus)!;
@@ -122,7 +124,7 @@ export default function HomeScreen() {
     };
 
     return (
-        <MainFrame header='home' headerMenu={["none", []]}>
+        <MainFrame header='home' headerMenu={["none", []]} onRefresh={fetchDashboard}>
 
             {/* ── Title bar ──────────────────────────────────────────
                 Styled to match the Menu2 navy bar visually but with no

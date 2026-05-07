@@ -59,18 +59,28 @@ export default function TicketsScreen() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
 
+  // Shared fetcher so both the focus-effect and pull-to-refresh use the
+  // same code path. Returns the promise so MainFrame can await it for the
+  // pull-to-refresh spinner.
+  const fetchTickets = useCallback(async () => {
+    setError(null);
+    try {
+      const rows = await api.authGet<BackendTicket[]>('/contractors/assigned-tickets');
+      setTickets(rows ?? []);
+    } catch {
+      setError("Couldn't load tickets. Pull down to refresh.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Re-fetch on focus so returning from TicketDetail (e.g. after Start or
-  // Complete) reflects the new server-side status without needing a manual
-  // pull-to-refresh.
+  // Complete) reflects the new server-side status.
   useFocusEffect(useCallback(() => {
     let cancelled = false;
-    setError(null);
-    api.authGet<BackendTicket[]>('/contractors/assigned-tickets')
-      .then(rows => { if (!cancelled) setTickets(rows ?? []); })
-      .catch(()  => { if (!cancelled) setError("Couldn't load tickets. Pull to refresh."); })
-      .finally(() => { if (!cancelled) setLoading(false); });
+    fetchTickets().catch(() => { /* fetchTickets handles its own errors */ });
     return () => { cancelled = true; };
-  }, []));
+  }, [fetchTickets]));
 
   const handleTaskClick = (t: BackendTicket) => {
     navigation.navigate('TicketDetail' as never, { taskId: t.id, assigned: true } as never);
@@ -91,7 +101,7 @@ export default function TicketsScreen() {
   const completed  = tickets.filter(isCompletedRecent);
 
   return (
-    <MainFrame header='home'>
+    <MainFrame header='home' onRefresh={fetchTickets}>
 
       {/* Header */}
       <View style={styles.section}>

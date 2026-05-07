@@ -55,8 +55,17 @@ const styles = StyleSheet.create({
     flexDirection:     'row',
     alignItems:        'center',
     gap:               spacing.sm,
-    paddingVertical:   6,
+    paddingVertical:   8,
     paddingHorizontal: spacing.md,
+    // Match the 90%-centered Dashboard / Tickets section width so the
+    // banner aligns with the cards below it instead of being a full-bleed
+    // strip that visually dominates the screen.
+    width:             '90%',
+    alignSelf:         'center',
+    marginTop:         8,
+    marginBottom:      4,
+    borderRadius:      10,
+    borderWidth:       1,
     borderBottomWidth: 1,
   },
   text: {

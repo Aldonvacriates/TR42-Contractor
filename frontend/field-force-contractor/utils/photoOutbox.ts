@@ -67,11 +67,37 @@ export interface PhotoOutboxItem {
   lastError:      string | null;
 }
 
+// RFC 4122 v4-shaped: 8-4-4-4-12 hex chars with version + variant nibbles
+// in the right slots. The Python backend's uuid.UUID() validator rejects
+// anything that doesn't parse strictly, so this MUST follow the canonical
+// form — an earlier "UUID-ish" generator using Date.now().toString(16)
+// produced a 13-8-8-8 string that the backend 400'd on every upload.
 function newSubmissionUuid(): string {
-  // Lightweight UUID-ish identifier; we don't need cryptographic randomness
-  // here, just uniqueness for idempotent retries against the backend.
-  const rand = () => Math.random().toString(16).slice(2, 10);
-  return `${Date.now().toString(16)}-${rand()}-${rand()}-${rand()}`;
+  const hex = () => Math.floor(Math.random() * 16).toString(16);
+  let s = '';
+  for (let i = 0; i < 32; i++) s += hex();
+  // Force version 4 nibble in position 12 and the RFC 4122 variant nibble
+  // (8/9/a/b) in position 16 so the resulting string is a valid v4.
+  const variant = (8 + Math.floor(Math.random() * 4)).toString(16);
+  const final =
+    s.slice(0, 12) +
+    '4' + s.slice(13, 16) +
+    variant + s.slice(17, 32);
+  return (
+    final.slice(0,  8) + '-' +
+    final.slice(8,  12) + '-' +
+    final.slice(12, 16) + '-' +
+    final.slice(16, 20) + '-' +
+    final.slice(20, 32)
+  );
+}
+
+/** Strict v4 UUID test that mirrors the backend's uuid.UUID() check. Used
+ *  to detect rows queued with the old broken generator so we can rewrite
+ *  the submission_uuid on next send instead of looping on HTTP 400. */
+const UUID_V4_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function isValidUuidV4(s: string): boolean {
+  return typeof s === 'string' && UUID_V4_RE.test(s);
 }
 
 export async function enqueuePhoto(args: {
@@ -163,6 +189,26 @@ interface SendResult {
 
 async function sendOne(item: PhotoOutboxItem): Promise<SendResult> {
   const token = await getToken();
+
+  // Auto-heal: rows queued by the old broken generator have a malformed
+  // submission_uuid that the backend will 400 on. Rewrite it (and persist
+  // the new value to SQLite) before sending so retries actually succeed.
+  if (!isValidUuidV4(item.submissionUuid)) {
+    const healed = newSubmissionUuid();
+    try {
+      const db = await getDb();
+      await db.runAsync(
+        'UPDATE photo_outbox SET submission_uuid = ? WHERE id = ?',
+        [healed, item.id],
+      );
+      item = { ...item, submissionUuid: healed };
+    } catch {
+      // If the update fails, fall through with the in-memory rewrite —
+      // the next drain pass will retry the persistence.
+      item = { ...item, submissionUuid: healed };
+    }
+  }
+
   const form  = new FormData();
   form.append('ticket_id', item.ticketId);
   form.append('submission_uuid', item.submissionUuid);

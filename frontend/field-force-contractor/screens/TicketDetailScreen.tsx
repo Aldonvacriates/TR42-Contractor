@@ -86,25 +86,28 @@ export default function TicketDetailScreen() {
   // The backend doesn't currently expose GET /tickets/<id>, so we pull the
   // contractor's full assigned-tickets list and find ours by id. Cheap
   // enough for a 3-ticket demo, would need a dedicated endpoint at scale.
+  //
+  // Wrapped so pull-to-refresh can reuse the same code path.
+  const fetchTicketData = async () => {
+    try {
+      const rows = await api.authGet<any[]>('/contractors/assigned-tickets');
+      const t = (rows ?? []).find((r: any) => r.id === String(taskId));
+      if (t) {
+        setTicketData(t);
+        const s = (t.status || '').toUpperCase();
+        if (s === 'IN_PROGRESS')          setTaskStatus('in_progress');
+        else if (s === 'PENDING_APPROVAL' || s === 'COMPLETED' || s === 'APPROVED') setTaskStatus('completed');
+        else                              setTaskStatus('to_do');
+        if (t.notes && !notes)            setNotes(t.notes);
+      }
+    } catch {
+      // Keep placeholder data on fetch failure.
+    }
+  };
+
   useEffect(() => {
     let cancelled = false;
-    api.authGet<any[]>('/contractors/assigned-tickets')
-      .then(rows => {
-        if (cancelled) return;
-        const t = (rows ?? []).find((r: any) => r.id === String(taskId));
-        if (t) {
-          setTicketData(t);
-          // Reflect the server-side status into the local UI state so the
-          // primary-action button shows Start vs Complete correctly when
-          // the user reopens a ticket they already started.
-          const s = (t.status || '').toUpperCase();
-          if (s === 'IN_PROGRESS')          setTaskStatus('in_progress');
-          else if (s === 'PENDING_APPROVAL' || s === 'COMPLETED' || s === 'APPROVED') setTaskStatus('completed');
-          else                              setTaskStatus('to_do');
-          if (t.notes && !notes)            setNotes(t.notes);
-        }
-      })
-      .catch(() => { /* keep placeholder data on fetch failure */ });
+    fetchTicketData().catch(() => {});
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
@@ -642,7 +645,7 @@ export default function TicketDetailScreen() {
   };
 
   return (
-    <MainFrame header='home'>
+    <MainFrame header='home' onRefresh={fetchTicketData}>
 
       {/* ── Task Title + Status ── */}
       <View style={styles.section}>
