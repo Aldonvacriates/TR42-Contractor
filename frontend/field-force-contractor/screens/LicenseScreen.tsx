@@ -11,7 +11,7 @@
 //   Expiring Soon — 0 <= days <= 30
 //   Active        — days > 30
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -21,7 +21,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Ionicons }      from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 
 import { MainFrame } from '../components/MainFrame';
 import { colors, spacing, radius, fontSize, fonts } from '../constants/theme';
@@ -192,24 +192,31 @@ export default function LicenseScreen() {
   const [error,    setError]    = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    api.authGet<{ licenses: BackendLicense[]; count: number }>('/contractors/me/licenses')
-      .then(d => {
-        if (cancelled) return;
-        const rows = d.licenses ?? [];
-        setLicenses(rows);
-        // Auto-expand the most urgent license so the warning detail is
-        // visible without an extra tap.
-        if (rows[0]) setExpandedId(rows[0].id);
-      })
-      .catch(()  => { if (!cancelled) setError("Couldn't load licenses."); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+  const fetchLicenses = useCallback(async () => {
+    setError(null);
+    try {
+      const d = await api.authGet<{ licenses: BackendLicense[]; count: number }>('/contractors/me/licenses');
+      const rows = d.licenses ?? [];
+      setLicenses(rows);
+      // Auto-expand the most urgent license so the warning detail is
+      // visible without an extra tap. Only on the first load — don't
+      // re-collapse what the user already chose to inspect.
+      setExpandedId(prev => prev ?? rows[0]?.id ?? null);
+    } catch {
+      setError("Couldn't load licenses.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
+  // Re-fetch on focus so navigating back from a sub-screen picks up any
+  // server-side updates (renewal, new license added, etc.).
+  useFocusEffect(useCallback(() => {
+    fetchLicenses().catch(() => {});
+  }, [fetchLicenses]));
+
   return (
-    <MainFrame header="home" headerMenu={['Menu2', ['License Details']]}>
+    <MainFrame header="home" headerMenu={['Menu2', ['License Details']]} onRefresh={fetchLicenses}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {loading && (

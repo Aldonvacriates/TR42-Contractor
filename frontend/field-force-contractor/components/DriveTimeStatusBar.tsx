@@ -14,10 +14,10 @@
 //
 // Tapping the bar navigates to the DriveTimeTracker screen for full detail.
 
-import { FC, useEffect, useState } from 'react'
+import { FC, useCallback, useEffect, useState } from 'react'
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { useNavigation } from '@react-navigation/native'
+import { useFocusEffect, useNavigation } from '@react-navigation/native'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 
 import { RootStackParamList } from '@/App'
@@ -145,7 +145,12 @@ export const DriveTimeStatusBar: FC = () => {
     const [loading, setLoading] = useState(true)
     const [state, setState]     = useState<State | null>(null)
 
-    useEffect(() => {
+    // Re-fetch whenever the parent screen comes into focus so navigating
+    // back from DriveTimeTracker (where the contractor may have switched
+    // duty status) immediately reflects the new state without waiting for
+    // the 60s interval. The interval still runs while focused so an active
+    // driver sees their remaining-time tick down.
+    useFocusEffect(useCallback(() => {
         let cancelled = false
 
         const fetch = (markLoading: boolean) => {
@@ -163,16 +168,13 @@ export const DriveTimeStatusBar: FC = () => {
         }
 
         fetch(true)
-
-        // Refresh every 60s while mounted so the bar reflects the active
-        // driver ticking down toward the limit.
         const tick = setInterval(() => fetch(false), 60_000)
 
         return () => {
             cancelled = true
             clearInterval(tick)
         }
-    }, [])
+    }, []))
 
     // First load: subtle placeholder so layout doesn't jump.
     if (loading) {

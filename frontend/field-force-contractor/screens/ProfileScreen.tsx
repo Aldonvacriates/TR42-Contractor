@@ -11,7 +11,7 @@
 //   Default biometric method  — read by BiometricScreen on next login
 //   Chat direction (reverseStack) — top-down or bottom-up message stacking
 
-import { useState, useEffect, useContext } from 'react';
+import { useCallback, useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
@@ -24,7 +24,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons }  from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../App';
@@ -149,13 +149,22 @@ export default function ProfileScreen() {
   // Pull the contractor's real profile from /api/analytics/profile.
   // Endpoint joins auth_user + contractor server-side and filters by the
   // authenticated contractor, so no id wrangling here.
-  useEffect(() => {
-    let cancelled = false;
-    api.authGet<ProfilePayload>('/api/analytics/profile')
-      .then(d => { if (!cancelled) setProfile(d.profile ?? null); })
-      .catch(() => { /* leave null, render falls back to PLACEHOLDER */ });
-    return () => { cancelled = true; };
+  const fetchProfile = useCallback(async () => {
+    try {
+      const d = await api.authGet<ProfilePayload>('/api/analytics/profile');
+      setProfile(d.profile ?? null);
+    } catch {
+      // Leave existing profile in place; render falls back to PLACEHOLDER
+      // when null. Don't clear on transient failure during a re-fetch.
+    }
   }, []);
+
+  // Re-fetch on focus so server-side updates (license changes, contractor
+  // status flips, contact info edits from another surface) appear when
+  // the user navigates back here.
+  useFocusEffect(useCallback(() => {
+    fetchProfile().catch(() => {});
+  }, [fetchProfile]));
 
   // Build the displayed contractor object from real data with placeholder
   // fallbacks so the screen never shows "undefined".
@@ -206,7 +215,7 @@ export default function ProfileScreen() {
   };
 
   return (
-    <MainFrame header="home" headerMenu={['Menu2', ['Profile']]}>
+    <MainFrame header="home" headerMenu={['Menu2', ['Profile']]} onRefresh={fetchProfile}>
       <StatusBar
         barStyle={lightMode ? 'dark-content' : 'light-content'}
         backgroundColor="transparent"

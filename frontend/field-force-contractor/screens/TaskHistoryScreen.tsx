@@ -18,7 +18,7 @@
 // backend shape into the UI's TaskRecord type so the rendering code below
 // stays unchanged.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   View,
@@ -28,7 +28,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons }      from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../App';
@@ -345,20 +345,26 @@ export default function TaskHistoryScreen() {
   const [loading,  setLoading]    = useState(true);
   const [error,    setError]      = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    // Pull a healthy chunk so we have several "complete" and "incomplete"
-    // entries to show. The endpoint paginates; 50 is plenty for a demo
-    // contractor and small enough to fetch in one round-trip.
-    api.authGet<JobsResponse>('/api/analytics/jobs?limit=50')
-      .then(d => {
-        if (cancelled) return;
-        setHistory((d.jobs ?? []).map(jobToRecord));
-      })
-      .catch(()  => { if (!cancelled) setError("Couldn't load task history."); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+  // Pull a healthy chunk so we have several "complete" and "incomplete"
+  // entries to show. The endpoint paginates; 50 is plenty for a demo
+  // contractor and small enough to fetch in one round-trip.
+  const fetchHistory = useCallback(async () => {
+    setError(null);
+    try {
+      const d = await api.authGet<JobsResponse>('/api/analytics/jobs?limit=50');
+      setHistory((d.jobs ?? []).map(jobToRecord));
+    } catch {
+      setError("Couldn't load task history.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  // Re-fetch on focus so completing a ticket and coming back to history
+  // shows the freshly-completed entry.
+  useFocusEffect(useCallback(() => {
+    fetchHistory().catch(() => {});
+  }, [fetchHistory]));
 
   const toggleCard = (id: string) => {
     setOpenCard(prev => (prev === id ? null : id));
@@ -368,7 +374,7 @@ export default function TaskHistoryScreen() {
   const incomplete = history.filter(r => r.status === 'Incomplete');
 
   return (
-    <MainFrame header="home" headerMenu={['Menu2', ['Task History']]}>
+    <MainFrame header="home" headerMenu={['Menu2', ['Task History']]} onRefresh={fetchHistory}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {/* Summary strip */}

@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { MainFrame } from '../components/MainFrame';
@@ -107,9 +107,13 @@ export default function HomeScreen() {
         setJobsLoading(false);
     };
 
-    useEffect(() => {
+    // Re-fetch on focus so navigating back from a ticket / inspection / AI
+    // screen reflects the new server-side state (anomaly flag changes,
+    // newly-completed tickets, etc.) without needing a manual pull.
+    useFocusEffect(useCallback(() => {
         fetchDashboard().catch(() => {});
-    }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []));
 
     const currentStatusData = statusOptions.find(s => s.value === currentStatus)!;
 
