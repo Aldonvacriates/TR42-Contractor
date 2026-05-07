@@ -10,7 +10,20 @@ import { SETTINGS_BIOMETRIC_KEY } from './ProfileScreen';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
+import { api } from '../utils/api';
 
+function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+const acceptLocationKey = (id: number) => `accept_location_${id}`;
+const notesKey = (id: number) => `notes_${id}`;
 
 export default function TicketDetailScreen() {
   const navigation = useNavigation<any>();
@@ -25,10 +38,9 @@ export default function TicketDetailScreen() {
   const [selectedMethod, setSelectedMethod] = useState<'face' | 'fingerprint'>('fingerprint');
   const [scanState, setScanState] = useState<'idle' | 'scanning' | 'failed'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
-  const [startLocation, setStartLocation] = useState<Location.LocationObject | null>(null);
   const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
-
+  const [inspectionDone, setInspectionDone] = useState(false);
   const pinRefs = useRef<(TextInput | null)[]>([null, null, null, null, null, null]);
 
   // ── Load saved biometric preference ────────────────────────────────────────
@@ -41,6 +53,8 @@ export default function TicketDetailScreen() {
         if (saved === 'face' || saved === 'fingerprint') {
           setSelectedMethod(saved);
         }
+        const savedNotes = await AsyncStorage.getItem(notesKey(taskId));
+        if (savedNotes) setNotes(savedNotes);
       } catch {
         // Fall back to fingerprint default if read fails
       }
@@ -48,21 +62,6 @@ export default function TicketDetailScreen() {
     loadPreference();
   }, []);
 
-  // Capture GPS when verification reaches location step
-  useEffect(() => {
-    if (verificationStep !== 'location') return;
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setErrorMessage('Location permission is required to start a task.');
-        setVerificationStep('error');
-        return;
-      }
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      setStartLocation(loc);
-      setVerificationStep('success');
-    })();
-  }, [verificationStep]);
 
   // Auto-close modal after success
   useEffect(() => {
@@ -75,6 +74,49 @@ export default function TicketDetailScreen() {
     }, 2000);
     return () => clearTimeout(t);
   }, [verificationStep]);
+
+  useEffect(() => {
+    if (verificationStep !== 'location') return;
+    (async () => {
+      try {
+        const DEV_SKIP_LOCATION = false; 
+
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setErrorMessage('Location permission is required to start a task.');
+          setVerificationStep('error');
+          return;
+        }
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+
+        if (!DEV_SKIP_LOCATION) {
+          const distance = getDistanceMeters(
+            loc.coords.latitude,
+            loc.coords.longitude,
+            task.locationCoords.lat,
+            task.locationCoords.lng
+          );
+          const METERS_PER_MILE = 1609; // ~1 mile
+          const THRESHOLD_METERS = METERS_PER_MILE;
+          if (distance > THRESHOLD_METERS) {
+            setErrorMessage(`You must be within 1 mile of the site. You are currently ${Math.round(distance / METERS_PER_MILE * 10) / 10} miles away.`);
+            setVerificationStep('error');
+            return;
+          }
+        }
+
+        setVerificationStep('success');
+      } catch {
+        setErrorMessage('Could not verify your location. Please try again.');
+        setVerificationStep('error');
+      }
+    })();
+  }, [verificationStep]);
+
+  useEffect(() => {
+    if (route.params?.inspectionDone) setInspectionDone(true);
+  }, [route.params?.inspectionDone]);
+
 
   useSpeechRecognitionEvent('start', () => setListening(true));
   useSpeechRecognitionEvent('end', () => setListening(false));
@@ -93,6 +135,8 @@ export default function TicketDetailScreen() {
     title: 'Install Gas Pump at Station #42',
     deadline: 'March 21, 2026 at 5:00 PM',
     location: '1234 Main Street, San Francisco, CA 94102',
+    locationCoords: { lat: 37.7749, lng: -122.4194 },
+    inspectionRequired: false,   
     description: 'Install new gas pump model XR-500 at station #42. Ensure proper connection to underground tank and test all safety mechanisms before completion.',
     pointOfContact: { name: 'John Martinez', phone: '+1 (555) 012-3456' },
     photosRequired: 1,
@@ -242,19 +286,36 @@ export default function TicketDetailScreen() {
 
   const handleCompleteTask = async () => {
     try {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      await AsyncStorage.setItem(
-        `location_log_${task.id}`,
-        JSON.stringify({
-          taskId: task.id,
-          startLocation: startLocation?.coords ?? null,
-          endLocation: loc.coords,
-          startedAt: startLocation?.timestamp ?? null,
-          completedAt: loc.timestamp,
-        })
-      );
+      const savedAccept = await AsyncStorage.getItem(`accept_location_${taskId}`);
+      const acceptLoc = savedAccept ? JSON.parse(savedAccept) : null;
+
+      let endCoords = null;
+      try {
+        const endLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        endCoords = endLoc.coords;
+      } catch {
+        // Non-blocking — submit without end location if GPS fails
+      }
+
+      await api.authPut(`/tickets/${taskId}`, {
+        status: 'completed',
+        notes,
+        start_time: acceptLoc?.timestamp
+          ? new Date(acceptLoc.timestamp).toISOString()
+          : undefined,
+        contractor_start_location: acceptLoc?.coords
+          ? `${acceptLoc.coords.latitude},${acceptLoc.coords.longitude}`
+          : undefined,
+        end_time: new Date().toISOString(),
+        contractor_end_location: endCoords
+          ? `${endCoords.latitude},${endCoords.longitude}`
+          : undefined,
+      });
+
+      await AsyncStorage.removeItem(notesKey(taskId));
+      await AsyncStorage.removeItem(acceptLocationKey(taskId));
     } catch {
-      // Non-blocking — don't prevent completion if GPS fails
+      // TODO: queue for offline retry when sync manager is built
     }
 
     if (photoUris.length > 0) {
@@ -308,7 +369,22 @@ export default function TicketDetailScreen() {
     setVerificationStep('location');
   };
 
-  const handleAcceptTask = () => {
+  const handleAcceptTask = async () => {
+    if (task.inspectionRequired && !inspectionDone) {
+      navigation.navigate('Inspection' as never, { bypassGate: true, taskId } as never);
+      return;
+    }
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === 'granted') {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        await AsyncStorage.setItem(acceptLocationKey(taskId),
+          JSON.stringify({ coords: loc.coords, timestamp: loc.timestamp })
+        );
+      }
+    } catch {
+      // Non-blocking — proceed with accept even if GPS fails
+    }
     // TODO: API call to accept task
     navigation.goBack();
   };
@@ -375,7 +451,7 @@ export default function TicketDetailScreen() {
       </View>
 
       {/* ── Point of Contact ── */}
-      <View style={styles.infoCard}>
+      <TouchableOpacity style={styles.infoCard} onPress={() => navigation.navigate('Contacts')}>
         <View style={styles.infoIcon}>
           <Ionicons name="person" size={18} color="#ff8c00" />
         </View>
@@ -384,7 +460,8 @@ export default function TicketDetailScreen() {
           <Text style={styles.infoValue}>{task.pointOfContact.name}</Text>
           <Text style={styles.taskDetail}>{task.pointOfContact.phone}</Text>
         </View>
-      </View>
+        <Ionicons name="chevron-forward" size={16} color="#9ca3af" />
+      </TouchableOpacity>
 
       {/* ── Description ── */}
       <View style={styles.card}>
@@ -407,7 +484,10 @@ export default function TicketDetailScreen() {
           <TextInput
             style={styles.notesInput}
             value={notes}
-            onChangeText={setNotes}
+            onChangeText={(text) => {
+              setNotes(text);
+              AsyncStorage.setItem(notesKey(taskId), text);
+            }}
             placeholder="Add notes, observations, or issues..."
             placeholderTextColor="#6b7280"
             multiline

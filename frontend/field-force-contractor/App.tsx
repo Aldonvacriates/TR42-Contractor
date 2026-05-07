@@ -1,5 +1,5 @@
-import { useEffect, useState,useContext} from "react";
-import { TextInput, View, ActivityIndicator } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, TextInput, View } from "react-native";
 import { LoadFonts } from "./utils/LoadFonts";
 
 // Dark translucent keyboard on iOS for every TextInput in the app
@@ -16,10 +16,9 @@ import { NetworkProvider } from "./contexts/NetworkContext";
 
 // ── Jonathan ──────────────────────────────────────
 import { screenConfig } from "./constants/ScreenConfig";
+import { AppProvider } from "./contexts/AppContext";
 import { Chat } from "./screens/ChatScreen";
 import { Contacts } from "./screens/ContactScreen";
-import { SplashScreen} from "./screens/SplashScreen";
-import { AppContext, AppProvider} from "./contexts/AppContext";
 import DriveTimeTrackerScreen from "./screens/DriveTimeTrackerScreen";
 import HomeScreen from "./screens/HomeScreen";
 import { InspectionAssistScreen } from "./screens/InspectionAssistScreen";
@@ -27,10 +26,9 @@ import { ChatAssistantScreen } from "./screens/ChatAssistantScreen";
 import { PhotoReviewScreen } from "./screens/PhotoReviewScreen";
 import InspectionScreen from "./screens/InspectionScreen";
 import { SavedReportsScreen } from "./screens/SavedReportsScreen";
-import SessionLockScreen from "./screens/SessionLockScreen";
+import { SplashScreen } from "./screens/SplashScreen";
 import TicketDetailScreen from "./screens/TicketDetailScreen";
 import TicketsScreen from "./screens/TicketsScreen";
-import { Blank } from "./screens/Blank";
 
 // ── TROY — Auth screens ──────────────────────────────────────
 import BiometricScreen from "./screens/BiometricScreen";
@@ -55,12 +53,12 @@ export type RootStackParamList = {
 
   // ── Jonathan — App screens ───────────────────────────────────
   Home: undefined;
-  Blank: undefined;
+
   // ── Charlie — App screens ───────────────────────────────────
-  Contacts: undefined;
+  Contacts: {sort?:boolean};
   Chat: { name: string; contactId?: string };
   Tickets: undefined;
-  TicketDetail: { taskId: number };
+  TicketDetail: { taskId: number; inspectionDone?: boolean };
 
   // ── Jonathan — Work Orders (placeholder until real screen built) ──
   JobDetail: { jobId: string; workOrderId: string };
@@ -92,7 +90,7 @@ export type RootStackParamList = {
   TaskHistory: undefined;
 
   // ── Aldo — Inspection screen + AI assist + Drive Time ────────
-  Inspection: { bypassGate?: boolean } | undefined;
+  Inspection: { bypassGate?: boolean; taskId?: number } | undefined;
   InspectionAssist: undefined;
   ChatAssistant: undefined;
   PhotoReview: undefined;
@@ -134,12 +132,9 @@ function RootNavigator() {
 
   return (
     <StackNavigator.Navigator
-      screenOptions={screenConfig.window} initialRouteName="SplashScreen"
-      
+      screenOptions={screenConfig.window} initialRouteName="Login"
     >
           <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}          />
-           <StackNavigator.Screen name="Blank"          component={Blank}          />
-   
           <StackNavigator.Screen name="Inspection"       component={InspectionScreen}       />
           <StackNavigator.Screen name="Dashboard"        component={HomeScreen}              />
           <StackNavigator.Screen name="Home"             component={HomeScreen}              />
@@ -154,15 +149,12 @@ function RootNavigator() {
           <StackNavigator.Screen name="ChatAssistant"    component={ChatAssistantScreen}     />
           <StackNavigator.Screen name="PhotoReview"      component={PhotoReviewScreen}       />
           <StackNavigator.Screen name="DriveTimeTracker" component={DriveTimeTrackerScreen}  />
-          <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />
-       
-         <StackNavigator.Screen name="Login"           component={LoginScreen}           />
+          <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />     
+          <StackNavigator.Screen name="Login"           component={LoginScreen}           />
           <StackNavigator.Screen name="OfflineLogin"    component={OfflineLoginScreen}    />
           <StackNavigator.Screen name="BiometricCheck"  component={BiometricScreen}       />
           <StackNavigator.Screen name="PasswordReset"   component={PasswordResetScreen}   />
           <StackNavigator.Screen name="OfflinePinReset" component={OfflinePinResetScreen} />
-        
-     
 
     </StackNavigator.Navigator>
   );
@@ -174,8 +166,7 @@ export default function App() {
  
   useEffect(() => {
   
-    
-    const load = async () => {
+      const load = async () => {
       const isLoaded = await LoadFonts();
       setExternalFontsLoaded(isLoaded);
     };

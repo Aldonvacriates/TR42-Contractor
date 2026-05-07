@@ -1,20 +1,7 @@
 import { Assets } from "../constants/Assets";
 
 export const Menus = {
-  // ── Main ──────────────────────────────────────────────────
-  // Main is used in MainFrame and Blank.tsx as the item list for the header menu when Menu variant "Menu2" is rendered.
-  // label is used in MenuItem as the visible text for each menu option.
-  // component is used in MenuItem as the target screen name passed to navigation.navigate().
-  
-  Main: [
-    { label: "Dashboard", component: "Home" },
-    { label: "Login", component: "Login" },
-    { label: "Profile", component: "Profile" },
-    { label: "In Progress", component: "Blank" },
-    { label: "Field Force AI", component: "InspectionAssist" },
-    { label: "Field Assistant", component: "ChatAssistant" },
-    { label: "Photo Review", component: "PhotoReview" },
-  ],
+
 
   // ── Footer ────────────────────────────────────────────────
   // Footer is used in MainFrame as the default footer menu when Menu variant "Menu3" is rendered.
@@ -27,7 +14,8 @@ export const Menus = {
     {label:"Dashboard",icon:Assets.icons.HomeIcon,component:"Home"},
     {label:"Tickets",icon:Assets.icons.TaskIcon,component:"Tickets"},
     {label:"Contacts",icon:Assets.icons.ContactIcon,component:"Contacts"},
-    {label:"AI",icon:Assets.icons.AiIcon,component:"InspectionAssist"}
+    {label:"AI",icon:Assets.icons.AiIcon,component:"InspectionAssist"},
+    
 
 
  ],
