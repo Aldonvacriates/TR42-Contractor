@@ -29,6 +29,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../App';
 import { MainFrame } from '../components/MainFrame';
+import { LicenseExpirationBanner } from '../components/LicenseExpirationBanner';
 
 import { useTheme }           from '../contexts/ThemeContext';
 import { spacing, radius, fontSize, fonts } from '../constants/theme';
@@ -158,6 +159,11 @@ export default function ProfileScreen() {
         backgroundColor="transparent"
         translucent
       />
+
+      {/* ── License expiration banner (Cory stakeholder ask) ─── */}
+      {/* Renders only when at least one license is within 60 days of expiry
+          or already expired. Tapping navigates to the LicenseDetails screen. */}
+      <LicenseExpirationBanner />
 
       {/* ── Avatar + name ─────────────────────────────── */}
       <View style={[styles.avatarBlock, { backgroundColor: lightMode ? '#dde6f0' : '#0f1d33' }]}>
