@@ -25,22 +25,36 @@ import { api } from '@/utils/api'
 
 type Nav = NativeStackNavigationProp<RootStackParamList>
 
+interface DutySession {
+    current_status?: string
+}
+
 interface DriveTimeResponse {
-    session: unknown
+    session: DutySession | null
     driving_seconds: number
     remaining_seconds: number
     cycle_seconds: number
 }
 
 // ── Severity classification ────────────────────────────────────────────────
+//
+// Cory's stakeholder ask was "auto-trigger from Drive toggle" — meaning the
+// bar should appear whenever the contractor is on duty, not just when the
+// limit is close. The bar starts as a quiet green info row and intensifies
+// as the daily 11-hour limit approaches.
 
-type Severity = 'critical' | 'urgent' | 'warning'
+type Severity = 'critical' | 'urgent' | 'warning' | 'info'
 
-function severityFor(remainingSeconds: number): Severity | null {
+const ON_DUTY_STATUSES = new Set(['driving', 'on_duty'])
+
+function severityFor(remainingSeconds: number, currentStatus: string | undefined): Severity | null {
+    // Hidden when off duty or in sleeper berth — no need to nag a parked truck.
+    if (!currentStatus || !ON_DUTY_STATUSES.has(currentStatus)) return null
+
     if (remainingSeconds <= 15 * 60) return 'critical'
     if (remainingSeconds <= 30 * 60) return 'urgent'
     if (remainingSeconds <= 60 * 60) return 'warning'
-    return null
+    return 'info'
 }
 
 const SEVERITY_STYLE: Record<Severity, {
@@ -71,6 +85,13 @@ const SEVERITY_STYLE: Record<Severity, {
         icon:   'time',
         label:  'HEADS UP',
     },
+    info: {
+        bg:     'rgba(52,211,153,0.10)',
+        border: 'rgba(52,211,153,0.30)',
+        fg:     '#34d399',
+        icon:   'speedometer',
+        label:  'ON DUTY',
+    },
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -84,36 +105,48 @@ function formatRemaining(seconds: number): string {
     return m > 0 ? `${h}h ${m}m remaining` : `${h}h remaining`
 }
 
+function formatUsed(seconds: number): string {
+    const minutes = Math.floor(seconds / 60)
+    const h = Math.floor(minutes / 60)
+    const m = minutes % 60
+    return m > 0 ? `${h}h ${m}m used` : `${h}h used`
+}
+
 // ── Component ──────────────────────────────────────────────────────────────
+
+interface State {
+    drivingSecs:    number
+    remainingSecs:  number
+    currentStatus:  string | undefined
+}
 
 export const DriveTimeStatusBar: FC = () => {
     const navigation = useNavigation<Nav>()
-    const [loading,        setLoading]        = useState(true)
-    const [remainingSecs, setRemainingSecs]   = useState<number | null>(null)
+    const [loading, setLoading] = useState(true)
+    const [state, setState]     = useState<State | null>(null)
 
     useEffect(() => {
         let cancelled = false
-        api.authGet<DriveTimeResponse>('/drive-time/current')
-            .then(res => {
-                if (cancelled) return
-                // No active session → don't render the bar (the contractor isn't
-                // on duty yet, no need to alarm them about a limit they aren't
-                // approaching).
-                setRemainingSecs(res.session ? res.remaining_seconds : null)
-            })
-            .catch(() => { if (!cancelled) setRemainingSecs(null) })
-            .finally(() => { if (!cancelled) setLoading(false) })
 
-        // Refresh every 60s while mounted so the bar reflects the active driver
-        // ticking down toward the limit.
-        const tick = setInterval(() => {
+        const fetch = (markLoading: boolean) => {
             api.authGet<DriveTimeResponse>('/drive-time/current')
                 .then(res => {
                     if (cancelled) return
-                    setRemainingSecs(res.session ? res.remaining_seconds : null)
+                    setState({
+                        drivingSecs:   res.driving_seconds,
+                        remainingSecs: res.remaining_seconds,
+                        currentStatus: res.session?.current_status,
+                    })
                 })
-                .catch(() => { /* keep last value on transient failure */ })
-        }, 60_000)
+                .catch(() => { if (!cancelled) setState(null) })
+                .finally(() => { if (markLoading && !cancelled) setLoading(false) })
+        }
+
+        fetch(true)
+
+        // Refresh every 60s while mounted so the bar reflects the active
+        // driver ticking down toward the limit.
+        const tick = setInterval(() => fetch(false), 60_000)
 
         return () => {
             cancelled = true
@@ -131,12 +164,15 @@ export const DriveTimeStatusBar: FC = () => {
         )
     }
 
-    if (remainingSecs == null) return null
+    if (!state) return null
 
-    const sev = severityFor(remainingSecs)
+    const sev = severityFor(state.remainingSecs, state.currentStatus)
     if (!sev) return null
 
     const style = SEVERITY_STYLE[sev]
+    const subtitle = sev === 'info'
+        ? `${formatUsed(state.drivingSecs)} of 11h daily limit`
+        : 'Tap to view detail and switch status'
 
     return (
         <TouchableOpacity
@@ -149,10 +185,10 @@ export const DriveTimeStatusBar: FC = () => {
             </View>
             <View style={{ flex: 1 }}>
                 <Text style={[s.severityLabel, { color: style.fg }]}>{style.label}</Text>
-                <Text style={s.title} numberOfLines={1}>Drive time {formatRemaining(remainingSecs)}</Text>
-                <Text style={s.subtitle} numberOfLines={1}>
-                    Tap to view detail and switch status
+                <Text style={s.title} numberOfLines={1}>
+                    Drive time {formatRemaining(state.remainingSecs)}
                 </Text>
+                <Text style={s.subtitle} numberOfLines={1}>{subtitle}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={style.fg} />
         </TouchableOpacity>
