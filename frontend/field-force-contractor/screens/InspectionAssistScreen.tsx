@@ -504,49 +504,62 @@ export const InspectionAssistScreen: FC = () => {
                 </ScrollView>
             </MainFrame>
 
-            {/* ── Refine modal ── */}
+            {/* ── Refine modal ──
+                React Native Modals render in their own native window above
+                the React tree, so the outer screen-level KeyboardAvoidingView
+                doesn't lift modal content when the keyboard appears. The
+                fix is to wrap the modal's CONTENT in its own
+                KeyboardAvoidingView so the card itself shifts up. */}
             <Modal
                 visible={refineMsgId !== null}
                 transparent
                 animationType="fade"
                 onRequestClose={() => setRefineMsgId(null)}
             >
-                <View style={s.modalBackdrop}>
-                    <View style={s.modalCard}>
-                        <Text style={s.modalTitle}>Refine report</Text>
-                        <Text style={s.modalHint}>
-                            Tell the assistant what to change. The original report stays in
-                            view and gets revised in place.
-                        </Text>
-                        <TextInput
-                            style={s.modalInput}
-                            placeholder="e.g. bump priority to high, mention the broken valve"
-                            placeholderTextColor="rgba(255,255,255,0.35)"
-                            value={refineFeedback}
-                            onChangeText={setRefineFeedback}
-                            multiline
-                            autoFocus
-                        />
-                        <View style={s.modalRow}>
-                            <TouchableOpacity
-                                style={s.modalCancel}
-                                onPress={() => setRefineMsgId(null)}
-                                activeOpacity={0.7}
-                            >
-                                <Text style={s.modalCancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[s.modalSubmit, !refineFeedback.trim() && s.modalSubmitDisabled]}
-                                onPress={submitRefine}
-                                disabled={!refineFeedback.trim()}
-                                activeOpacity={0.7}
-                            >
-                                <Ionicons name="sparkles" size={14} color="#0a0a0a" />
-                                <Text style={s.modalSubmitText}>Apply</Text>
-                            </TouchableOpacity>
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    // Bump the card a bit further off the keyboard top edge
+                    // so the Apply / Cancel row clears the suggestion strip.
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+                >
+                    <View style={s.modalBackdrop}>
+                        <View style={s.modalCard}>
+                            <Text style={s.modalTitle}>Refine report</Text>
+                            <Text style={s.modalHint}>
+                                Tell the assistant what to change. The original report stays in
+                                view and gets revised in place.
+                            </Text>
+                            <TextInput
+                                style={s.modalInput}
+                                placeholder="e.g. bump priority to high, mention the broken valve"
+                                placeholderTextColor="rgba(255,255,255,0.35)"
+                                value={refineFeedback}
+                                onChangeText={setRefineFeedback}
+                                multiline
+                                autoFocus
+                            />
+                            <View style={s.modalRow}>
+                                <TouchableOpacity
+                                    style={s.modalCancel}
+                                    onPress={() => setRefineMsgId(null)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={s.modalCancelText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[s.modalSubmit, !refineFeedback.trim() && s.modalSubmitDisabled]}
+                                    onPress={submitRefine}
+                                    disabled={!refineFeedback.trim()}
+                                    activeOpacity={0.7}
+                                >
+                                    <Ionicons name="sparkles" size={14} color="#0a0a0a" />
+                                    <Text style={s.modalSubmitText}>Apply</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </Modal>
         </KeyboardAvoidingView>
     )
