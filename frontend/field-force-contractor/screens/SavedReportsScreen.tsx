@@ -20,6 +20,7 @@ import { useFocusEffect } from '@react-navigation/native'
 import { MainFrame } from '@/components/MainFrame'
 import { api } from '@/utils/api'
 import { listChats, SavedChat } from '@/utils/aiClient'
+import { exportChatPdf, exportReportPdf } from '@/utils/pdfExport'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -117,7 +118,31 @@ const ReportCard: FC<{ report: SavedReport }> = ({ report }) => {
             )}
 
             {/* ── Footer ── */}
-            <Text style={s.dateText}>{formatDate(report.created_at)}</Text>
+            <View style={s.cardFooterRow}>
+                <Text style={s.dateText}>{formatDate(report.created_at)}</Text>
+                <TouchableOpacity
+                    style={s.pdfBtn}
+                    // Stop the toggle-expand from firing when the PDF
+                    // button is tapped — the contractor wanted a quick
+                    // export, not to collapse the report.
+                    onPress={(e) => {
+                        e.stopPropagation?.()
+                        exportReportPdf({
+                            title:               report.title,
+                            priority:            report.priority,
+                            category:            report.category,
+                            description:         report.description,
+                            recommended_actions: report.recommended_actions,
+                            raw_notes:           report.raw_notes,
+                            created_at:          report.created_at,
+                        }).catch(() => {})
+                    }}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="document-text-outline" size={12} color="#a78bfa" />
+                    <Text style={s.pdfBtnText}>Export PDF</Text>
+                </TouchableOpacity>
+            </View>
         </TouchableOpacity>
     )
 }
@@ -183,7 +208,24 @@ const ChatCard: FC<{ chat: SavedChat }> = ({ chat }) => {
                 </View>
             )}
 
-            <Text style={s.dateText}>{formatDate(chat.created_at)}</Text>
+            <View style={s.cardFooterRow}>
+                <Text style={s.dateText}>{formatDate(chat.created_at)}</Text>
+                <TouchableOpacity
+                    style={s.pdfBtn}
+                    onPress={(e) => {
+                        e.stopPropagation?.()
+                        exportChatPdf({
+                            title:    chat.title,
+                            summary:  chat.summary,
+                            messages: chat.messages,
+                        }).catch(() => {})
+                    }}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="document-text-outline" size={12} color="#a78bfa" />
+                    <Text style={s.pdfBtnText}>Export PDF</Text>
+                </TouchableOpacity>
+            </View>
         </TouchableOpacity>
     )
 }
@@ -507,12 +549,34 @@ const s = StyleSheet.create({
         borderColor:     'rgba(255,255,255,0.06)',
     },
 
-    // Date
+    // Date row + PDF export pill
+    cardFooterRow: {
+        flexDirection:  'row',
+        alignItems:     'center',
+        justifyContent: 'space-between',
+        marginTop:      6,
+    },
     dateText: {
         fontFamily: 'poppins-regular',
         fontSize:   10,
         color:      'rgba(255,255,255,0.25)',
-        marginTop:  4,
+    },
+    pdfBtn: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               4,
+        paddingVertical:   4,
+        paddingHorizontal: 10,
+        borderRadius:      999,
+        backgroundColor:   'rgba(167,139,250,0.10)',
+        borderWidth:       1,
+        borderColor:       'rgba(167,139,250,0.25)',
+    },
+    pdfBtnText: {
+        fontFamily:    'poppins-bold',
+        fontSize:      10,
+        color:         '#a78bfa',
+        letterSpacing: 0.3,
     },
 
     // Empty state

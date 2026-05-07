@@ -33,6 +33,7 @@ import {
     saveChat,
     SavedChatMessage,
 } from '@/utils/aiClient'
+import { exportChatPdf } from '@/utils/pdfExport'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -390,12 +391,16 @@ export const ChatAssistantScreen: FC = () => {
             })
             setSavedAt(new Date().toLocaleTimeString())
 
-            // Then open the share sheet so the contractor can email/Notes
-            // /Slack the transcript on top of having it saved server-side.
-            await Share.share({
-                title:   'Field Assistant Conversation',
-                message: buildTranscript(),
-                ...(attachedPhotoUri ? { url: attachedPhotoUri } : {}),
+            // Then export a branded PDF and open the system share sheet so
+            // the contractor can email / Notes / Slack / drop into a ticket
+            // comment a polished, self-contained document. The PDF is
+            // generated locally via expo-print so this works the same
+            // online or offline once the backend save has completed.
+            await exportChatPdf({
+                title:    buildTitle(),
+                summary:  buildSummary(),
+                messages,
+                photoUri: attachedPhotoUri,
             })
             setSaveModalOpen(false)
         } catch (err: any) {
@@ -599,9 +604,10 @@ export const ChatAssistantScreen: FC = () => {
                             </View>
 
                             <Text style={s.saveBody}>
-                                Bundles your questions and the assistant's answers into a
-                                shareable transcript you can email, save to Notes, or attach
-                                to a ticket comment. Optionally attach a photo for context.
+                                Saves the conversation to your account and exports a branded
+                                PDF you can email, drop into Notes, or attach to a ticket
+                                comment. Optionally attach a photo for context — it'll
+                                appear inside the PDF.
                             </Text>
 
                             <View style={s.saveStats}>
