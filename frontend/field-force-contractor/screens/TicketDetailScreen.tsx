@@ -1047,13 +1047,23 @@ export default function TicketDetailScreen() {
               <View style={styles.analysisError}>
                 <Ionicons name="alert-circle" size={32} color="#ef4444" />
                 <Text style={styles.analysisErrorText}>{analysisError}</Text>
-                <TouchableOpacity
-                  style={styles.btnPrimary}
-                  onPress={() => analysisOpen && handleAnalyzePhoto(analysisOpen)}
-                >
-                  <Ionicons name="refresh" size={16} color="white" />
-                  <Text style={styles.btnText}>Retry</Text>
-                </TouchableOpacity>
+                <View style={styles.analysisErrorActions}>
+                  <TouchableOpacity
+                    style={styles.analysisRetryBtn}
+                    onPress={() => analysisOpen && handleAnalyzePhoto(analysisOpen)}
+                    activeOpacity={0.85}
+                  >
+                    <Ionicons name="refresh" size={18} color="white" />
+                    <Text style={styles.analysisRetryBtnText}>Retry</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.analysisCloseBtn}
+                    onPress={() => setAnalysisOpen(null)}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.analysisCloseBtnText}>Close</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             )}
 
@@ -1256,12 +1266,60 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     lineHeight: 16,
   },
-  analysisError: { alignItems: 'center', gap: 12, paddingVertical: 16 },
+  analysisError: {
+    alignItems:        'center',
+    gap:               14,
+    paddingVertical:   18,
+    paddingHorizontal: 4,
+  },
   analysisErrorText: {
     fontFamily: 'poppins-regular',
     fontSize:   13,
     color:      '#ef4444',
     textAlign:  'center',
+    lineHeight: 18,
+  },
+  analysisErrorActions: {
+    flexDirection: 'row',
+    alignSelf:     'stretch',
+    gap:           10,
+    marginTop:     4,
+  },
+  // Primary retry — fills the row with bold orange so it reads as the
+  // recommended action even at a glance. Match the Ticket-Detail
+  // primary-button language (16pt vertical padding, rounded 12).
+  analysisRetryBtn: {
+    flex:            2,
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'center',
+    gap:             8,
+    backgroundColor: '#ff8c00',
+    borderRadius:    12,
+    paddingVertical: 14,
+  },
+  analysisRetryBtnText: {
+    fontFamily:    'poppins-bold',
+    fontSize:      14,
+    color:         '#ffffff',
+    letterSpacing: 0.3,
+  },
+  // Secondary close — quieter outline so it sits next to Retry without
+  // competing for attention.
+  analysisCloseBtn: {
+    flex:            1,
+    alignItems:      'center',
+    justifyContent:  'center',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth:     1,
+    borderColor:     'rgba(255,255,255,0.15)',
+    borderRadius:    12,
+    paddingVertical: 14,
+  },
+  analysisCloseBtnText: {
+    fontFamily: 'poppins-bold',
+    fontSize:   13,
+    color:      'rgba(255,255,255,0.75)',
   },
   severityPill: {
     alignSelf:         'flex-start',
