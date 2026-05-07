@@ -199,14 +199,16 @@ export const DriveTimeStatusBar: FC = () => {
 
 const s = StyleSheet.create({
     bar: {
-        flexDirection:    'row',
-        alignItems:       'center',
-        gap:              12,
-        padding:          14,
-        borderRadius:     14,
-        borderWidth:      1,
-        marginHorizontal: 16,
-        marginTop:        12,
+        flexDirection: 'row',
+        alignItems:    'center',
+        gap:           12,
+        padding:       14,
+        borderRadius:  14,
+        borderWidth:   1,
+        width:         '90%',
+        alignSelf:     'center',
+        marginTop:     16,
+        marginBottom:  8,
     },
     placeholder: {
         backgroundColor: 'rgba(255,255,255,0.03)',
