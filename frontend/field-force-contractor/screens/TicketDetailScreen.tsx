@@ -310,47 +310,69 @@ export default function TicketDetailScreen() {
     setVerificationStep('initial');
   };
 
+  // Shared post-pick logic: append to photo state and capture a geotag
+  // alongside the URI so the upload can include lat/lng even after a long
+  // offline window.
+  const recordPhoto = async (uri: string) => {
+    setPhotoUris(prev => [...prev, uri]);
+    try {
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const geoTag = { lat: loc.coords.latitude, lng: loc.coords.longitude, timestamp: loc.timestamp, uri };
+      const existing = await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]';
+      const log = JSON.parse(existing);
+      log.push(geoTag);
+      await AsyncStorage.setItem(`photo_log_${task.id}`, JSON.stringify(log));
+    } catch {
+      // Non-blocking — don't prevent photo if GPS fails
+    }
+  };
+
   const handleTakePhoto = async () => {
     if (photoUris.length >= task.photosMax) return;
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-    });
-    if (!result.canceled && result.assets[0]?.uri) {
-      const uri = result.assets[0].uri;
-      setPhotoUris(prev => [...prev, uri]);
-      try {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const geoTag = { lat: loc.coords.latitude, lng: loc.coords.longitude, timestamp: loc.timestamp, uri };
-        const existing = await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]';
-        const log = JSON.parse(existing);
-        log.push(geoTag);
-        await AsyncStorage.setItem(`photo_log_${task.id}`, JSON.stringify(log));
-      } catch {
-        // Non-blocking — don't prevent photo if GPS fails
+    try {
+      // Explicitly request camera permission before launching. Without this
+      // the picker silently fails on iOS / Android when the OS-level
+      // permission is denied — which made the button feel like a no-op.
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Camera permission needed',
+          'Field Force needs camera access to capture job site photos. Enable it in Settings.',
+        );
+        return;
       }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality:    0.7,
+      });
+      if (!result.canceled && result.assets[0]?.uri) {
+        await recordPhoto(result.assets[0].uri);
+      }
+    } catch (err: any) {
+      Alert.alert('Camera error', err?.message ?? 'Could not open the camera.');
     }
   };
 
   const handleUploadPhoto = async () => {
     if (photoUris.length >= task.photosMax) return;
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.7,
-    });
-    if (!result.canceled && result.assets[0]?.uri) {
-      const uri = result.assets[0].uri;
-      setPhotoUris(prev => [...prev, uri]);
-      try {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const geoTag = { lat: loc.coords.latitude, lng: loc.coords.longitude, timestamp: loc.timestamp, uri };
-        const existing = await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]';
-        const log = JSON.parse(existing);
-        log.push(geoTag);
-        await AsyncStorage.setItem(`photo_log_${task.id}`, JSON.stringify(log));
-      } catch {
-        // Non-blocking — don't prevent photo if GPS fails
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert(
+          'Photo library permission needed',
+          'Field Force needs photo library access to attach existing photos. Enable it in Settings.',
+        );
+        return;
       }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality:    0.7,
+      });
+      if (!result.canceled && result.assets[0]?.uri) {
+        await recordPhoto(result.assets[0].uri);
+      }
+    } catch (err: any) {
+      Alert.alert('Photo library error', err?.message ?? 'Could not open the photo library.');
     }
   };
 
