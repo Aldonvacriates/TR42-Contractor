@@ -96,10 +96,19 @@ export default function TicketDetailScreen() {
             task.locationCoords.lat,
             task.locationCoords.lng
           );
-          const METERS_PER_MILE = 1609; // ~1 mile
-          const THRESHOLD_METERS = METERS_PER_MILE;
+          // Cory's stakeholder ask (3/24): "within 100 ft he wants bio
+          // authentication when arriving and leaving. He likes the
+          // simplicity of it." Tightening the start-task proximity check to
+          // 100ft as a first step. Full geofence-triggered biometric
+          // (fires automatically on arrival / leaving) is roadmapped for v2.
+          const METERS_PER_FOOT  = 0.3048;
+          const THRESHOLD_FEET   = 100;
+          const THRESHOLD_METERS = THRESHOLD_FEET * METERS_PER_FOOT; // ~30.5m
           if (distance > THRESHOLD_METERS) {
-            setErrorMessage(`You must be within 1 mile of the site. You are currently ${Math.round(distance / METERS_PER_MILE * 10) / 10} miles away.`);
+            const feetAway = Math.round(distance / METERS_PER_FOOT);
+            setErrorMessage(
+              `You must be within ${THRESHOLD_FEET} feet of the site. You are currently ${feetAway} feet away.`
+            );
             setVerificationStep('error');
             return;
           }
