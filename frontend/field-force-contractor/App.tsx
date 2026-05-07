@@ -23,6 +23,8 @@ import { AppContext, AppProvider} from "./contexts/AppContext";
 import DriveTimeTrackerScreen from "./screens/DriveTimeTrackerScreen";
 import HomeScreen from "./screens/HomeScreen";
 import { InspectionAssistScreen } from "./screens/InspectionAssistScreen";
+import { ChatAssistantScreen } from "./screens/ChatAssistantScreen";
+import { PhotoReviewScreen } from "./screens/PhotoReviewScreen";
 import InspectionScreen from "./screens/InspectionScreen";
 import { SavedReportsScreen } from "./screens/SavedReportsScreen";
 import SessionLockScreen from "./screens/SessionLockScreen";
@@ -58,7 +60,7 @@ export type RootStackParamList = {
   Contacts: undefined;
   Chat: { name: string; contactId?: string };
   Tickets: undefined;
-  TicketDetail: { taskId: number };
+  TicketDetail: { taskId: number; inspectionDone?: boolean };
 
   // ── Jonathan — Work Orders (placeholder until real screen built) ──
   JobDetail: { jobId: string; workOrderId: string };
@@ -90,8 +92,10 @@ export type RootStackParamList = {
   TaskHistory: undefined;
 
   // ── Aldo — Inspection screen + AI assist + Drive Time ────────
-  Inspection: { bypassGate?: boolean } | undefined;
+  Inspection: { bypassGate?: boolean; taskId?: number } | undefined;
   InspectionAssist: undefined;
+  ChatAssistant: undefined;
+  PhotoReview: undefined;
   DriveTimeTracker: undefined;
 
   // ── Aldo — Saved Reports ─────────────────────────────────────
@@ -130,7 +134,7 @@ function RootNavigator() {
 
   return (
     <StackNavigator.Navigator
-      screenOptions={screenConfig.window} initialRouteName="SplashScreen"
+      screenOptions={screenConfig.window} initialRouteName="Login"
       
     >
           <StackNavigator.Screen name="SplashScreen"    component={SplashScreen}          />
@@ -147,6 +151,8 @@ function RootNavigator() {
           <StackNavigator.Screen name="LicenseDetails"   component={LicenseScreen}           />
           <StackNavigator.Screen name="TaskHistory"      component={TaskHistoryScreen}       />
           <StackNavigator.Screen name="InspectionAssist" component={InspectionAssistScreen}  />
+          <StackNavigator.Screen name="ChatAssistant"    component={ChatAssistantScreen}     />
+          <StackNavigator.Screen name="PhotoReview"      component={PhotoReviewScreen}       />
           <StackNavigator.Screen name="DriveTimeTracker" component={DriveTimeTrackerScreen}  />
           <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />
        

@@ -1073,12 +1073,19 @@ class DutyLogs(Base):
 
 
 class AiInspectionReports(Base):
-    """AI-generated inspection report saved by a contractor. Local-only."""
+    """AI-generated inspection report saved by a contractor.
+
+    Lives on Supabase as `ai_inspection_reports` (created via the
+    add_ai_inspection_reports migration). Text/UUID PKs to match the rest
+    of the schema. contractor_id stores the auth_user.id (the JWT subject),
+    not the contractor.id, so list queries against request.user_id work
+    without a join.
+    """
     __tablename__ = 'ai_inspection_reports'
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    contractor_id: Mapped[str] = mapped_column(String, nullable=False, index=True)
-    inspection_id: Mapped[str] = mapped_column(String, nullable=True, index=True)
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_uuid)
+    contractor_id: Mapped[str] = mapped_column(ForeignKey('auth_user.id'), nullable=False, index=True)
+    inspection_id: Mapped[str] = mapped_column(ForeignKey('inspection.id'), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     priority: Mapped[str] = mapped_column(String(20), nullable=False)
     category: Mapped[str] = mapped_column(String(100), nullable=False)
