@@ -447,7 +447,15 @@ export default function TicketDetailScreen() {
       }
     }
 
-    navigation.navigate('TaskConfirmation' as never, { taskId } as never);
+    // No dedicated TaskConfirmation screen exists in the navigator yet, so
+    // bounce the user back to the Tickets list. The list re-fetches on focus
+    // and the just-completed ticket will surface in the Pending Approval
+    // group.
+    Alert.alert(
+      'Submitted for approval',
+      'Your task has been sent to your supervisor for review.',
+      [{ text: 'OK', onPress: () => navigation.navigate('Tickets' as never) }],
+    );
   };
 
   const handleRemovePhoto = (index: number) => {
