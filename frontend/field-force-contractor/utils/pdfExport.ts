@@ -177,6 +177,51 @@ export function markdownToHtml(src: string): string {
   if (inFence && fenceBuffer.length) {
     out.push(`<pre><code>${esc(fenceBuffer.join('\n'))}</code></pre>`);
   }
+  // Post-pass: convert pipe-table runs to <table>. Gemini and Claude both
+  // love emitting tables for citation lookups (Permit Element / What it
+  // Must Contain etc.), so the PDF needs to render them as proper
+  // <table> rather than literal pipes inside paragraphs.
+  return convertPipeTables(out.join('\n'));
+}
+
+/** Match a sequence of <p>|...|...</p> rows (with the standard
+ *  | --- | --- | separator row immediately after the header) and
+ *  rewrite them as a single <table>.thead/tbody. Other paragraphs
+ *  pass through unchanged. */
+function convertPipeTables(html: string): string {
+  const lines = html.split('\n');
+  const out: string[] = [];
+  let i = 0;
+
+  const stripPRow = (s: string): string[] | null => {
+    const m = /^<p>\|(.+)\|<\/p>$/.exec(s.trim());
+    if (!m) return null;
+    return m[1].split('|').map(c => c.trim());
+  };
+
+  while (i < lines.length) {
+    const headerCells = stripPRow(lines[i]);
+    const sepCells   = i + 1 < lines.length ? stripPRow(lines[i + 1]) : null;
+    const isSeparator = sepCells && sepCells.every(c => /^:?-{2,}:?$/.test(c.trim()));
+
+    if (headerCells && isSeparator) {
+      const head = `<tr>${headerCells.map(c => `<th>${c}</th>`).join('')}</tr>`;
+      const bodyRows: string[] = [];
+      let j = i + 2;
+      while (j < lines.length) {
+        const cells = stripPRow(lines[j]);
+        if (!cells) break;
+        bodyRows.push(`<tr>${cells.map(c => `<td>${c}</td>`).join('')}</tr>`);
+        j += 1;
+      }
+      out.push(`<table class="md-table"><thead>${head}</thead><tbody>${bodyRows.join('')}</tbody></table>`);
+      i = j;
+      continue;
+    }
+
+    out.push(lines[i]);
+    i += 1;
+  }
   return out.join('\n');
 }
 
@@ -201,6 +246,15 @@ function brandHeader(logoDataUri: string | null, subtitle: string): string {
 }
 
 const BASE_CSS = `
+  /* Reserve standard letter-paper margins (~0.6 in) so the printed PDF
+     respects the printable area of any consumer printer or PDF viewer.
+     expo-print honours @page on iOS / Android print rendering. The
+     in-document .page padding stays as a small content cushion on top
+     of the page margin so headers and footers don't kiss the edge. */
+  @page {
+    size: letter;
+    margin: 0.6in 0.6in 0.7in 0.6in;
+  }
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
@@ -209,7 +263,12 @@ const BASE_CSS = `
     color: #0f172a;
     background: #ffffff;
   }
-  .page { padding: 36px 40px 48px 40px; }
+  .page {
+    /* Inner cushion so the brand bar / footer sit a few pt away from
+       the @page margin edge but the body still flows over multi-page
+       reports without artificial gutters. */
+    padding: 8px 4px 16px 4px;
+  }
   .brand-header {
     display: flex;
     align-items: center;
@@ -370,6 +429,30 @@ const BASE_CSS = `
     padding: 4px 10px;
     color: #475569;
   }
+  /* Markdown tables (pipe syntax converted to real <table> by
+     convertPipeTables). Use compact spacing so multi-column citations
+     stay readable on letter paper. */
+  .turn-md table.md-table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 8px 0;
+    font-size: 12px;
+  }
+  .turn-md table.md-table th,
+  .turn-md table.md-table td {
+    border: 1px solid #cbd5e1;
+    padding: 6px 8px;
+    text-align: left;
+    vertical-align: top;
+  }
+  .turn-md table.md-table th {
+    background: #f1f5f9;
+    color: #0e182e;
+    font-weight: 700;
+  }
+  .turn-md table.md-table tr:nth-child(even) td {
+    background: #fafafa;
+  }
   .photo-card {
     margin-top: 18px;
     padding: 8px;
@@ -516,7 +599,12 @@ export async function exportReportPdf(args: ExportReportArgs): Promise<void> {
 async function renderAndShare(html: string, displayTitle: string): Promise<void> {
   // expo-print returns a temporary file in cache. The system share sheet
   // can read it before the OS reaps the cache, which is plenty.
-  const { uri } = await Print.printToFileAsync({ html });
+  // 1pt = 1/72in. 0.6in = 43.2pt → round to 43 for cleaner output.
+  // Width / height left at expo-print defaults (612x792 = US Letter).
+  const { uri } = await Print.printToFileAsync({
+    html,
+    margins: { left: 43, right: 43, top: 43, bottom: 50 },
+  });
 
   const canShare = await Sharing.isAvailableAsync();
   if (!canShare) {
