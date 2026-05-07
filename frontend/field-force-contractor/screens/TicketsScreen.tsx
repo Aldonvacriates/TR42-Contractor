@@ -15,6 +15,7 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useCallback } from 'react';
 import { MainFrame } from '../components/MainFrame';
 import { api } from '../utils/api';
+import { ticketDisplayTitle } from '../utils/ticketLabels';
 
 interface BackendTicket {
   id:           string;
@@ -31,11 +32,11 @@ interface BackendTicket {
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
+// service_type on the backend is a foreign-key UUID, not a name. Delegate
+// to the shared ticketDisplayTitle helper so this screen and TicketDetail
+// produce identical labels.
 function ticketTitle(t: BackendTicket): string {
-  if (t.service_type) return t.service_type;
-  const desc = (t.description || '').trim();
-  if (desc) return desc.length > 60 ? `${desc.slice(0, 60)}...` : desc;
-  return `Ticket ${t.id.slice(0, 8)}`;
+  return ticketDisplayTitle(t);
 }
 
 function fmtDeadline(iso: string | null): string {

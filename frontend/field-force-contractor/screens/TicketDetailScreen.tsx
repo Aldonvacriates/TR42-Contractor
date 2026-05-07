@@ -11,6 +11,7 @@ import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { verifyOfflinePin } from '../utils/secureStorage';
+import { ticketDisplayTitle } from '../utils/ticketLabels';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { api } from '../utils/api';
 
@@ -212,15 +213,9 @@ export default function TicketDetailScreen() {
       });
     } catch { return iso ?? 'No deadline set'; }
   };
-  const titleFromTicket = (t: any) => {
-    const desc = (t?.description || '').trim();
-    if (t?.service_type) return t.service_type;
-    if (desc) return desc.length > 60 ? `${desc.slice(0, 60)}...` : desc;
-    return `Ticket ${String(t?.id ?? '').slice(0, 8)}`;
-  };
   const task = {
     id:          ticketData?.id ?? taskId,
-    title:       ticketData ? titleFromTicket(ticketData) : 'Loading task...',
+    title:       ticketData ? ticketDisplayTitle(ticketData) : 'Loading task...',
     deadline:    ticketData ? fmtDeadline(ticketData.due_date) : '',
     // Backend schema doesn't currently surface a human-readable address.
     // The `route` field on the ticket is a free-text description used by
