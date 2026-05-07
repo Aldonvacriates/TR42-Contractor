@@ -89,6 +89,97 @@ function esc(s: string): string {
     .replace(/"/g, '&quot;');
 }
 
+/** Tiny markdown -> HTML converter. Handles the subset Claude / Gemini
+ *  actually emits: headings (#, ##, ###), bold, italics, inline code,
+ *  fenced code blocks, ordered / unordered lists, and links. Anything
+ *  not matched is treated as a plain paragraph and escaped. Used by the
+ *  PDF export so saved chats and reports render formatting cleanly in
+ *  the printed document. */
+export function markdownToHtml(src: string): string {
+  if (!src) return '';
+
+  const lines = src.replace(/\r\n/g, '\n').split('\n');
+  const out: string[] = [];
+
+  type ListKind = 'ul' | 'ol';
+  const listStack: ListKind[] = [];
+  let inFence = false;
+  let fenceBuffer: string[] = [];
+
+  const closeLists = () => {
+    while (listStack.length) out.push(`</${listStack.pop()}>`);
+  };
+
+  const inline = (text: string): string => {
+    let s = esc(text);
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(
+      /\[([^\]]+)\]\(([^\s)]+)\)/g,
+      (_, label, url) => `<a href="${url}">${label}</a>`,
+    );
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[\s(])\*(?!\s)(.+?)\*(?=$|[\s.,!?)])/g, '$1<em>$2</em>');
+    s = s.replace(/(^|[\s(])_(?!\s)(.+?)_(?=$|[\s.,!?)])/g, '$1<em>$2</em>');
+    return s;
+  };
+
+  for (const line of lines) {
+    if (/^```/.test(line)) {
+      if (inFence) {
+        out.push(`<pre><code>${esc(fenceBuffer.join('\n'))}</code></pre>`);
+        fenceBuffer = [];
+        inFence = false;
+      } else {
+        closeLists();
+        inFence = true;
+      }
+      continue;
+    }
+    if (inFence) { fenceBuffer.push(line); continue; }
+
+    const heading = /^(#{1,3})\s+(.+)$/.exec(line);
+    if (heading) {
+      closeLists();
+      const lvl = heading[1].length;
+      out.push(`<h${lvl}>${inline(heading[2])}</h${lvl}>`);
+      continue;
+    }
+
+    const ul = /^\s*[-*+]\s+(.+)$/.exec(line);
+    if (ul) {
+      if (listStack[listStack.length - 1] !== 'ul') {
+        closeLists();
+        listStack.push('ul');
+        out.push('<ul>');
+      }
+      out.push(`<li>${inline(ul[1])}</li>`);
+      continue;
+    }
+
+    const ol = /^\s*\d+\.\s+(.+)$/.exec(line);
+    if (ol) {
+      if (listStack[listStack.length - 1] !== 'ol') {
+        closeLists();
+        listStack.push('ol');
+        out.push('<ol>');
+      }
+      out.push(`<li>${inline(ol[1])}</li>`);
+      continue;
+    }
+
+    if (!line.trim()) { closeLists(); continue; }
+    closeLists();
+    out.push(`<p>${inline(line)}</p>`);
+  }
+
+  closeLists();
+  if (inFence && fenceBuffer.length) {
+    out.push(`<pre><code>${esc(fenceBuffer.join('\n'))}</code></pre>`);
+  }
+  return out.join('\n');
+}
+
 /** Brand header used at the top of every export. Logo image is embedded
  *  as a data URI so the PDF stays self-contained. */
 function brandHeader(logoDataUri: string | null, subtitle: string): string {
@@ -229,6 +320,56 @@ const BASE_CSS = `
     color: #1e293b;
     white-space: pre-wrap;
   }
+  /* When the body is markdown-rendered HTML, switch off pre-wrap (the
+     converter already produces real <p> / <ul> / <li> elements) and
+     give the inline elements brand styling. */
+  .turn-md { white-space: normal; }
+  .turn-md p { margin: 0 0 8px 0; }
+  .turn-md p:last-child { margin-bottom: 0; }
+  .turn-md strong { color: #0e182e; }
+  .turn-md em { color: #1e293b; }
+  .turn-md h1, .turn-md h2, .turn-md h3 {
+    margin: 8px 0 4px 0;
+    color: #0e182e;
+    font-weight: 700;
+  }
+  .turn-md h1 { font-size: 16px; }
+  .turn-md h2 { font-size: 14px; }
+  .turn-md h3 { font-size: 13px; }
+  .turn-md ul, .turn-md ol {
+    margin: 4px 0 8px 0;
+    padding-left: 20px;
+  }
+  .turn-md li { margin-bottom: 3px; }
+  .turn-md code {
+    background: #f1f5f9;
+    color: #6b21a8;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-family: ui-monospace, 'Menlo', 'Consolas', monospace;
+    font-size: 12px;
+  }
+  .turn-md pre {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    overflow-x: auto;
+    font-size: 12px;
+  }
+  .turn-md pre code {
+    background: transparent;
+    color: #1e293b;
+    padding: 0;
+  }
+  .turn-md a { color: #6b21a8; }
+  .turn-md blockquote {
+    border-left: 3px solid #c4b5fd;
+    background: #faf5ff;
+    margin: 6px 0;
+    padding: 4px 10px;
+    color: #475569;
+  }
   .photo-card {
     margin-top: 18px;
     padding: 8px;
@@ -275,17 +416,23 @@ export async function exportChatPdf(args: ExportChatArgs): Promise<void> {
     const klass = m.role === 'user' ? 'turn turn-user' : 'turn turn-assistant';
     const role  = m.role === 'user' ? 'Contractor' : 'Field Assistant';
     const ts    = m.timestamp ? ` &middot; ${esc(m.timestamp)}` : '';
+    // Render assistant turns as parsed markdown so bold, lists, and
+    // headings survive into the PDF the way they do on screen. User
+    // turns stay plain text — what the contractor typed is what shows.
+    const body  = m.role === 'assistant'
+      ? `<div class="turn-text turn-md">${markdownToHtml(m.content)}</div>`
+      : `<div class="turn-text">${esc(m.content)}</div>`;
     return `
       <div class="${klass}">
         <div class="turn-role ${m.role === 'user' ? 'turn-role-user' : ''}">${role}${ts}</div>
-        <div class="turn-text">${esc(m.content)}</div>
+        ${body}
       </div>`;
   }).join('');
 
   const summaryHtml = args.summary
     ? `<div class="section">
          <div class="section-title">Summary</div>
-         <div class="section-body">${esc(args.summary)}</div>
+         <div class="section-body turn-md">${markdownToHtml(args.summary)}</div>
        </div>`
     : '';
 
@@ -349,7 +496,7 @@ export async function exportReportPdf(args: ExportReportArgs): Promise<void> {
     ${stampHtml}
     <div class="section">
       <div class="section-title">Description</div>
-      <div class="section-body">${esc(args.description)}</div>
+      <div class="section-body turn-md">${markdownToHtml(args.description)}</div>
     </div>
     <div class="section">
       <div class="section-title">Recommended actions</div>

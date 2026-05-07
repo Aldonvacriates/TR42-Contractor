@@ -23,6 +23,7 @@ import * as ImagePicker from 'expo-image-picker'
 import { Ionicons } from '@expo/vector-icons'
 import { useNavigation } from '@react-navigation/native'
 import { MainFrame } from '@/components/MainFrame'
+import { MarkdownView } from '@/components/MarkdownView'
 import { SearchBar } from '@/components/SearchBar'
 import { InitID } from '@/utils/InitID'
 import { TimeFormater } from '@/utils/timeFormater'
@@ -125,7 +126,11 @@ const AssistantBubble: FC<{ text: string; time: string }> = ({ text, time }) => 
         </View>
         <View style={{ flex: 1 }}>
             <View style={s.aiBubble}>
-                <Text style={s.aiText}>{text}</Text>
+                {/* Render the assistant's reply as markdown so **bold**,
+                    *italics*, lists, headings, inline code, links, and
+                    block quotes display the way the model emits them
+                    rather than as raw asterisks and hashes. */}
+                <MarkdownView>{text}</MarkdownView>
             </View>
             <Text style={s.timeLabel}>{time}</Text>
         </View>

@@ -18,6 +18,7 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { MainFrame } from '@/components/MainFrame'
+import { MarkdownView } from '@/components/MarkdownView'
 import { api } from '@/utils/api'
 import { listChats, SavedChat } from '@/utils/aiClient'
 import { exportChatPdf, exportReportPdf } from '@/utils/pdfExport'
@@ -202,7 +203,15 @@ const ChatCard: FC<{ chat: SavedChat }> = ({ chat }) => {
                                 {m.role === 'user' ? 'You' : 'Assistant'}
                                 {m.timestamp ? ` · ${m.timestamp}` : ''}
                             </Text>
-                            <Text style={s.bodyText}>{m.content}</Text>
+                            {m.role === 'assistant' ? (
+                                // Render assistant replies as markdown so the
+                                // formatting the model emitted in the chat
+                                // (bold, lists, headings, code) survives
+                                // into the saved transcript.
+                                <MarkdownView>{m.content}</MarkdownView>
+                            ) : (
+                                <Text style={s.bodyText}>{m.content}</Text>
+                            )}
                         </View>
                     ))}
                 </View>
