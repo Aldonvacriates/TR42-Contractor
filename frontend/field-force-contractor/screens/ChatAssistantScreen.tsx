@@ -34,15 +34,37 @@ type Bubble = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const SUGGESTIONS = [
-    { label: 'What PPE do I need for high-pressure lines?', icon: 'shield-checkmark-outline' },
-    { label: "How do I document a near miss?",              icon: 'document-text-outline' },
-    { label: 'OSHA confined space entry checklist',          icon: 'list-outline' },
-    { label: "Explain my ticket's anomaly flag",             icon: 'help-circle-outline' },
+/** OSHA-citation-flavoured prompt templates. The full pool is larger than
+ *  what we display at any one time — the chips below cycle through the pool
+ *  with a fade animation so contractors browsing the assistant see different
+ *  starter ideas each time, all anchored on real OSHA citations and common
+ *  field issues. */
+const OSHA_TEMPLATES: { label: string; icon: string }[] = [
+    { label: 'Cite OSHA 1910.146 — confined space entry permit requirements',  icon: 'document-lock-outline' },
+    { label: 'OSHA 1910.147 lockout/tagout — what do I do before service?',    icon: 'lock-closed-outline' },
+    { label: 'OSHA 1910.132 PPE assessment — high-pressure lines',              icon: 'shield-checkmark-outline' },
+    { label: 'OSHA 1910.1200 HazCom — chemical I cannot identify on site',     icon: 'flask-outline' },
+    { label: 'OSHA 1926.501 fall protection at 6+ ft — required gear',         icon: 'arrow-down-outline' },
+    { label: 'OSHA 1910.134 respirator — change-out schedule + fit test',      icon: 'medkit-outline' },
+    { label: 'OSHA 1910.95 hearing conservation — when do I need plugs?',      icon: 'ear-outline' },
+    { label: 'OSHA 1926.451 scaffolding inspection before each shift',         icon: 'construct-outline' },
+    { label: 'How do I document a near miss with photo + GPS for the file?',  icon: 'document-text-outline' },
+    { label: 'Eyewash failed — which OSHA standard covers replacement time?',  icon: 'water-outline' },
+    { label: 'Hot work permit — OSHA 1910.252 welding/cutting/brazing',         icon: 'flame-outline' },
+    { label: 'OSHA 1910.178 powered industrial trucks — daily inspection',     icon: 'car-outline' },
+    { label: "Explain my ticket's anomaly flag in plain language",             icon: 'help-circle-outline' },
+    { label: 'Citation 1910.23 walking surfaces — guardrail height + load',   icon: 'list-outline' },
 ]
 
+/** Number of chips visible at once. Cycle picks this many from the pool. */
+const VISIBLE_CHIP_COUNT = 4
+
+/** Milliseconds between rotations of the visible chip set. Long enough to
+ *  read but short enough to feel alive. */
+const ROTATION_INTERVAL_MS = 5000
+
 const WELCOME_TEXT =
-    "Hi! I'm your field assistant.\n\nAsk me about procedures, safety, OSHA references, or troubleshooting equipment. Tap a suggestion below to start."
+    "Hi! I'm your field assistant.\n\nAsk me about procedures, safety, OSHA citations, or troubleshooting equipment. Tap a suggestion below to start — the templates rotate so you'll see fresh ideas every few seconds."
 
 // ─── Typing indicator ─────────────────────────────────────────────────────────
 
@@ -108,6 +130,94 @@ const UserBubble: FC<{ text: string; time: string }> = ({ text, time }) => (
         </View>
     </View>
 )
+
+// ─── Rotating OSHA-citation templates ─────────────────────────────────────────
+//
+// Cory's stakeholder ask was for the AI assistant to help with OSHA citation
+// lookups when a contractor hits a safety issue in the field. Surfacing one
+// fixed list of suggestions hides the breadth of what the assistant can do,
+// so the chips cycle through OSHA_TEMPLATES on a timer with a fade animation
+// — the contractor sees fresh prompt ideas every few seconds and is much
+// more likely to discover a useful starting point.
+//
+// Each visible chip also has its own subtle pulse animation so the row reads
+// as alive even between full rotations.
+
+const RotatingTemplates: FC<{ onPick: (label: string) => void }> = ({ onPick }) => {
+    // Window into OSHA_TEMPLATES — slide it forward by VISIBLE_CHIP_COUNT
+    // every ROTATION_INTERVAL_MS. We start at zero so the first frame is
+    // deterministic for screenshot tests.
+    const [windowStart, setWindowStart] = useState(0)
+    const fade = useRef(new Animated.Value(1)).current
+    const pulse = useRef(new Animated.Value(0)).current
+
+    useEffect(() => {
+        // Slow pulse — gives every chip a continuous low-key shimmer so the
+        // user notices the row is interactive without it feeling frantic.
+        Animated.loop(
+            Animated.sequence([
+                Animated.timing(pulse, { toValue: 1, duration: 1400, useNativeDriver: true }),
+                Animated.timing(pulse, { toValue: 0, duration: 1400, useNativeDriver: true }),
+            ])
+        ).start()
+
+        // Rotate the visible window: fade out, advance the start index, fade
+        // back in. Faster than re-mounting the chips and keeps the layout
+        // stable so the keyboard / scroll position never jumps.
+        const rotate = () => {
+            Animated.timing(fade, {
+                toValue:         0,
+                duration:        260,
+                useNativeDriver: true,
+            }).start(() => {
+                setWindowStart(prev => (prev + VISIBLE_CHIP_COUNT) % OSHA_TEMPLATES.length)
+                Animated.timing(fade, {
+                    toValue:         1,
+                    duration:        260,
+                    useNativeDriver: true,
+                }).start()
+            })
+        }
+        const id = setInterval(rotate, ROTATION_INTERVAL_MS)
+        return () => {
+            clearInterval(id)
+            fade.stopAnimation()
+            pulse.stopAnimation()
+        }
+    }, [fade, pulse])
+
+    // Pulse maps 0 -> 1 to a subtle 0.85 -> 1 opacity shimmer on the chip
+    // border + background. Keeps the chips feeling "live" between rotations.
+    const pulseOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1] })
+
+    // Slice the visible window with wrap-around so we never run out of chips.
+    const visible = Array.from({ length: VISIBLE_CHIP_COUNT }, (_, i) => {
+        return OSHA_TEMPLATES[(windowStart + i) % OSHA_TEMPLATES.length]
+    })
+
+    return (
+        <View style={s.chipsRow}>
+            <View style={s.chipsHeader}>
+                <Ionicons name="flash" size={12} color="#a78bfa" />
+                <Text style={s.chipsHeaderText}>OSHA citation templates</Text>
+            </View>
+            <Animated.View style={[s.chips, { opacity: fade }]}>
+                {visible.map(({ label, icon }) => (
+                    <Animated.View key={label} style={{ opacity: pulseOpacity }}>
+                        <TouchableOpacity
+                            style={s.chip}
+                            onPress={() => onPick(label)}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name={icon as any} size={14} color="#a78bfa" />
+                            <Text style={s.chipText} numberOfLines={2}>{label}</Text>
+                        </TouchableOpacity>
+                    </Animated.View>
+                ))}
+            </Animated.View>
+        </View>
+    )
+}
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
@@ -197,22 +307,9 @@ export const ChatAssistantScreen: FC = () => {
                         <Text style={s.welcomeBody}>{WELCOME_TEXT}</Text>
                     </View>
 
-                    {/* Suggestion chips */}
-                    {suggestionsVisible && (
-                        <View style={s.chips}>
-                            {SUGGESTIONS.map(({ label, icon }) => (
-                                <TouchableOpacity
-                                    key={label}
-                                    style={s.chip}
-                                    onPress={() => send(label)}
-                                    activeOpacity={0.7}
-                                >
-                                    <Ionicons name={icon as any} size={14} color="#a78bfa" />
-                                    <Text style={s.chipText}>{label}</Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
-                    )}
+                    {/* OSHA-citation template chips — rotate every few seconds with a
+                        fade animation so contractors see fresh starter prompts. */}
+                    {suggestionsVisible && <RotatingTemplates onPick={send} />}
 
                     {/* Divider once conversation starts */}
                     {bubbles.length > 0 && <View style={s.divider} />}
@@ -276,6 +373,15 @@ const s = StyleSheet.create({
         lineHeight: 20,
     },
 
+    chipsRow:        { gap: 6, marginTop: 4 },
+    chipsHeader:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+    chipsHeaderText: {
+        fontFamily:    'poppins-bold',
+        fontSize:      11,
+        color:         '#a78bfa',
+        letterSpacing: 0.6,
+        textTransform: 'uppercase',
+    },
     chips: { gap: 8 },
     chip: {
         flexDirection:     'row',
@@ -288,8 +394,10 @@ const s = StyleSheet.create({
         borderRadius:      20,
         paddingVertical:   9,
         paddingHorizontal: 14,
+        maxWidth:          '100%',
     },
     chipText: {
+        flexShrink: 1,
         fontFamily: 'poppins-regular',
         fontSize:   13,
         color:      '#a78bfa',
