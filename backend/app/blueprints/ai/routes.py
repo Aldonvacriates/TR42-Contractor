@@ -126,12 +126,81 @@ def _parse_json_strict(text: str):
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
+        # Salvage path: Gemini sometimes truncates mid-response (especially
+        # via the OpenAI-compat endpoint when the upstream connection chunks
+        # oddly), so we end up with a near-valid but unclosed JSON object.
+        # Try to extract whatever string fields and arrays the model emitted
+        # before we give up. Better to render a partial, honest analysis
+        # than a hard error.
+        salvaged = _salvage_partial_json(cleaned)
+        if salvaged is not None:
+            log.info(
+                'AI JSON was truncated; salvaged fields=%s | err=%s',
+                list(salvaged.keys()), e,
+            )
+            return salvaged
+
         log.warning('AI returned non-JSON response: %s | text=%r', e, cleaned[:200])
         raise AIError(
             AI_BAD_RESPONSE,
             'AI returned an unexpected response format',
             502,
         )
+
+
+# Field-by-field rescue for truncated photo-analysis responses. We pull the
+# "summary"/"severity" strings and the "concerns"/"recommendations" arrays
+# in whatever order they appear, ignoring the missing closing `}`. Anything
+# we can't recover gets a sensible default so the frontend always renders
+# something rather than a hard error during a demo.
+_JSON_STRING_FIELD_RE = re.compile(
+    r'"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*)"',
+    re.DOTALL,
+)
+_JSON_ARRAY_FIELD_RE = re.compile(
+    r'"(\w+)"\s*:\s*\[([^\]]*)\]',
+    re.DOTALL,
+)
+_VALID_SEVERITIES = {'none', 'low', 'medium', 'high'}
+
+def _salvage_partial_json(text: str):
+    """Best-effort recovery from a truncated photo-analysis response.
+
+    Returns a dict shaped like the PhotoAnalysis schema (summary, severity,
+    concerns[], recommendations[]) or None if the text doesn't even look
+    like an analysis attempt — in which case the caller still raises
+    AI_BAD_RESPONSE.
+    """
+    if not text or '{' not in text:
+        return None
+
+    strings = {m.group(1): m.group(2) for m in _JSON_STRING_FIELD_RE.finditer(text)}
+    if 'summary' not in strings and 'severity' not in strings:
+        # Doesn't contain even the leading fields — give up.
+        return None
+
+    summary = strings.get('summary', '').strip()
+    severity_raw = strings.get('severity', '').strip().lower()
+    severity = severity_raw if severity_raw in _VALID_SEVERITIES else 'none'
+
+    def _items_from_array(field: str):
+        for m in _JSON_ARRAY_FIELD_RE.finditer(text):
+            if m.group(1) != field:
+                continue
+            inner = m.group(2)
+            return [
+                s.group(1).strip()
+                for s in re.finditer(r'"((?:[^"\\]|\\.)*)"', inner)
+                if s.group(1).strip()
+            ]
+        return []
+
+    return {
+        'summary':         summary or 'Partial analysis received from the AI; details below may be incomplete.',
+        'severity':        severity,
+        'concerns':        _items_from_array('concerns'),
+        'recommendations': _items_from_array('recommendations'),
+    }
 
 
 def _resolve_contractor():
@@ -282,12 +351,15 @@ def analyze_photo():
     if not photo.photo_content:
         raise AIError(AI_BAD_REQUEST, 'photo has no content stored', 400)
 
+    # 2048 tokens gives Gemini comfortable headroom to finish the JSON
+    # without mid-stream truncation. The prompt + structured schema fit
+    # well under that ceiling for any realistic photo analysis.
     text = resilient_call(lambda p: p.generate_with_image(
         messages=[{'role': 'user', 'content': 'Analyze this job-site photo.'}],
         system=_PHOTO_PROMPT,
         image_bytes=photo.photo_content,
         mime_type='image/jpeg',
-        max_tokens=1024,
+        max_tokens=2048,
     ))
     return jsonify(_parse_json_strict(text)), 200
 
