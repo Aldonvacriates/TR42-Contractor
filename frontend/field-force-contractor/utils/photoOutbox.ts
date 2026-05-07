@@ -150,7 +150,18 @@ async function markPhotoFailure(id: number, error: string): Promise<void> {
 
 // ── Single send ──────────────────────────────────────────────────────────────
 
-async function sendOne(item: PhotoOutboxItem): Promise<{ ok: boolean; status: number; transient: boolean; error?: string }> {
+interface SendResult {
+  ok:        boolean;
+  status:    number;
+  transient: boolean;
+  error?:    string;
+  /** Server-assigned photo id, present only on a successful upload. Used by
+   *  the inline-analyze flow so the caller can immediately POST the id back
+   *  to /api/ai/analyze-photo without re-listing the ticket's photo set. */
+  photoId?:  string;
+}
+
+async function sendOne(item: PhotoOutboxItem): Promise<SendResult> {
   const token = await getToken();
   const form  = new FormData();
   form.append('ticket_id', item.ticketId);
@@ -169,12 +180,23 @@ async function sendOne(item: PhotoOutboxItem): Promise<{ ok: boolean; status: nu
       },
       body: form,
     });
+    let photoId: string | undefined;
+    if (res.ok) {
+      try {
+        const body = await res.json();
+        if (body && typeof body.id === 'string') photoId = body.id;
+      } catch {
+        // Non-JSON or parse failure — leave photoId undefined so callers
+        // that don't need it (the regular outbox drain) carry on as before.
+      }
+    }
     return {
       ok:        res.ok,
       status:    res.status,
       // 4xx are permanent (validation, auth). 5xx and unknown are transient.
       transient: !(res.status >= 400 && res.status < 500),
       error:     res.ok ? undefined : `HTTP ${res.status}`,
+      photoId,
     };
   } catch (err) {
     return {
@@ -194,6 +216,10 @@ export interface PhotoDrainResult {
   drained: number;
   failed:  number;
   stopped: boolean;
+  /** Outbox-row-id -> server photo id for items drained on this run. The
+   *  inline-analyze flow uses this to look up the just-uploaded photo's
+   *  server id when a fresh enqueue+drain sends successfully. */
+  sentPhotoIds?: Record<number, string>;
 }
 
 let _draining = false;
@@ -205,6 +231,7 @@ export async function drainPhotoOutbox(): Promise<PhotoDrainResult> {
   let drained = 0;
   let failed  = 0;
   let stopped = false;
+  const sentPhotoIds: Record<number, string> = {};
 
   try {
     const items = await peekAllPhotos();
@@ -212,6 +239,7 @@ export async function drainPhotoOutbox(): Promise<PhotoDrainResult> {
       const result = await sendOne(item);
 
       if (result.ok) {
+        if (result.photoId) sentPhotoIds[item.id] = result.photoId;
         await removePhoto(item.id);
         drained += 1;
         continue;
@@ -233,25 +261,33 @@ export async function drainPhotoOutbox(): Promise<PhotoDrainResult> {
     _draining = false;
   }
 
-  return { drained, failed, stopped };
+  return { drained, failed, stopped, sentPhotoIds };
 }
 
 // Convenience: try to send right away when caller believes we're online; if
 // it fails for any reason, queue and let the auto-drain pick it up later.
+//
+// Returns the server-assigned photoId on the 'sent' branch so the inline
+// analyze flow can call /api/ai/analyze-photo without round-tripping
+// through GET /api/photos to find the row by submission_uuid.
 export async function uploadPhotoOrEnqueue(args: {
   ticketId:  string | number;
   fileUri:   string;
   latitude?: number | null;
   longitude?: number | null;
-}): Promise<{ status: 'sent' | 'queued'; queueId?: number; error?: string }> {
+}): Promise<
+  | { status: 'sent';   photoId: string; queueId?: number }
+  | { status: 'queued'; queueId: number; error?: string }
+> {
   // Optimistic path: enqueue first so it's durable, then attempt drain.
   // If the network is up, drainPhotoOutbox will send it and remove it
   // immediately. If not, it stays queued. This avoids a race where the
   // app crashes between fetch() and enqueue().
   const { id } = await enqueuePhoto(args);
   const result = await drainPhotoOutbox();
-  if (result.drained > 0) {
-    return { status: 'sent' };
+  const photoId = result.sentPhotoIds?.[id];
+  if (result.drained > 0 && photoId) {
+    return { status: 'sent', photoId, queueId: id };
   }
   return { status: 'queued', queueId: id };
 }

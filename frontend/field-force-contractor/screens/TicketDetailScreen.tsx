@@ -12,6 +12,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as LocalAuthentication from 'expo-local-authentication';
 import { verifyOfflinePin } from '../utils/secureStorage';
 import { ticketDisplayTitle } from '../utils/ticketLabels';
+import { analyzePhoto, friendlyAIError, PhotoAnalysis } from '../utils/aiClient';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { api } from '../utils/api';
 
@@ -47,6 +48,19 @@ export default function TicketDetailScreen() {
   // Real backend ticket data, fetched on mount. Falls back to the
   // hardcoded placeholder below when null (still loading or fetch failed).
   const [ticketData, setTicketData] = useState<any | null>(null);
+
+  // ── Inline photo analysis state ────────────────────────────────────────────
+  // Map of local photo URI -> server photo id, populated on first eager
+  // upload so a re-analyze tap doesn't re-upload the same bytes.
+  const [photoIdByUri, setPhotoIdByUri] = useState<Record<string, string>>({});
+  // Cached analysis per local URI so closing and reopening the modal is
+  // instant and doesn't burn another Gemini call.
+  const [analysisByUri, setAnalysisByUri] = useState<Record<string, PhotoAnalysis>>({});
+  // Per-photo "currently analyzing" state, keyed by local URI so multiple
+  // photos can be analyzed independently without spinners interfering.
+  const [analyzingUri, setAnalyzingUri]   = useState<string | null>(null);
+  const [analysisOpen, setAnalysisOpen]   = useState<string | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const pinRefs = useRef<(TextInput | null)[]>([null, null, null, null, null, null]);
 
   // ── Load saved biometric preference ────────────────────────────────────────
@@ -325,6 +339,56 @@ export default function TicketDetailScreen() {
       await AsyncStorage.setItem(`photo_log_${task.id}`, JSON.stringify(log));
     } catch {
       // Non-blocking — don't prevent photo if GPS fails
+    }
+  };
+
+  // ── Inline analyze: upload eagerly if needed, then call /api/ai/analyze-photo
+  // and surface the result in a modal. Cached per-URI so a re-tap is instant.
+  const handleAnalyzePhoto = async (uri: string) => {
+    // Always pop the modal so the user gets immediate visual feedback even
+    // while the network calls run.
+    setAnalysisOpen(uri);
+    setAnalysisError(null);
+
+    // Already analyzed? Just show the cached result.
+    if (analysisByUri[uri]) return;
+
+    setAnalyzingUri(uri);
+    try {
+      // 1. Resolve the server-side photo id, uploading first if needed.
+      let photoId = photoIdByUri[uri];
+      if (!photoId) {
+        // Pull lat/lng we captured at pick-time so the analyze call sees
+        // the same metadata a "Complete Task" upload would persist.
+        let lat: number | null = null;
+        let lng: number | null = null;
+        try {
+          const log = JSON.parse(await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]');
+          const entry = log.find((g: { uri: string }) => g.uri === uri);
+          if (entry) { lat = entry.lat ?? null; lng = entry.lng ?? null; }
+        } catch { /* fall through with nulls */ }
+
+        const upload = await uploadPhotoOrEnqueue({
+          ticketId: task.id, fileUri: uri, latitude: lat, longitude: lng,
+        });
+        if (upload.status !== 'sent' || !upload.photoId) {
+          // Queued / offline — analyze needs the server id, can't proceed.
+          setAnalysisError(
+            "You're offline. The photo is queued and will be analyzable once you reconnect.",
+          );
+          return;
+        }
+        photoId = upload.photoId;
+        setPhotoIdByUri(prev => ({ ...prev, [uri]: photoId! }));
+      }
+
+      // 2. Run Gemini vision via the existing analyze-photo endpoint.
+      const result = await analyzePhoto(photoId);
+      setAnalysisByUri(prev => ({ ...prev, [uri]: result }));
+    } catch (e: any) {
+      setAnalysisError(friendlyAIError(e));
+    } finally {
+      setAnalyzingUri(null);
     }
   };
 
@@ -682,18 +746,45 @@ export default function TicketDetailScreen() {
             <Text style={styles.photoCount}>{photoUris.length}/{task.photosRequired}</Text>
           </View>
           <View style={styles.photoRow}>
-            {photoUris.map((uri, i) => (
-              <View key={`p-${i}`} style={[styles.photoSlot, styles.photoSlotDone]}>
-                <Image source={{ uri }} style={styles.photoPreview} />
-                <TouchableOpacity
-                  style={styles.photoRemoveBtn}
-                  onPress={() => handleRemovePhoto(i)}
-                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                >
-                  <Ionicons name="close-circle" size={18} color="#ef4444" />
-                </TouchableOpacity>
-              </View>
-            ))}
+            {photoUris.map((uri, i) => {
+              const analyzed = !!analysisByUri[uri];
+              const busy     = analyzingUri === uri;
+              return (
+                <View key={`p-${i}`} style={[styles.photoSlot, styles.photoSlotDone]}>
+                  <Image source={{ uri }} style={styles.photoPreview} />
+                  <TouchableOpacity
+                    style={styles.photoRemoveBtn}
+                    onPress={() => handleRemovePhoto(i)}
+                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  >
+                    <Ionicons name="close-circle" size={18} color="#ef4444" />
+                  </TouchableOpacity>
+                  {/* Inline analyze pill — runs Gemini vision on the photo
+                      without waiting for Complete Task to upload it. */}
+                  <TouchableOpacity
+                    style={[styles.analyzePill, analyzed && styles.analyzePillDone]}
+                    onPress={() => handleAnalyzePhoto(uri)}
+                    disabled={busy}
+                    activeOpacity={0.8}
+                  >
+                    {busy ? (
+                      <ActivityIndicator size="small" color="#a78bfa" />
+                    ) : (
+                      <>
+                        <Ionicons
+                          name={analyzed ? 'checkmark-circle' : 'sparkles'}
+                          size={12}
+                          color={analyzed ? '#34d399' : '#a78bfa'}
+                        />
+                        <Text style={[styles.analyzePillText, analyzed && { color: '#34d399' }]}>
+                          {analyzed ? 'Analyzed' : 'Analyze'}
+                        </Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
             {photoUris.length < task.photosRequired &&
               [...Array(task.photosRequired - photoUris.length)].map((_, i) => (
                 <View key={`empty-${i}`} style={styles.photoSlot}>
@@ -903,6 +994,114 @@ export default function TicketDetailScreen() {
         </View>
       </Modal>
 
+      {/* ── Inline AI photo analysis modal ─────────────────────────────────
+          Pops when the user taps the Analyze pill on a photo. Shows the
+          uploading / analyzing spinner while we round-trip to the backend,
+          then renders the structured PhotoAnalysis (severity, summary,
+          concerns, recommendations). Cached per URI so re-tapping is
+          instant and doesn't re-call Gemini. */}
+      <Modal
+        visible={analysisOpen !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAnalysisOpen(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.analysisModal}>
+            <View style={styles.analysisHeader}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="sparkles" size={16} color="#a78bfa" />
+                <Text style={styles.analysisTitle}>AI Photo Review</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setAnalysisOpen(null)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="close" size={22} color="#9ca3af" />
+              </TouchableOpacity>
+            </View>
+
+            {analysisOpen && analyzingUri === analysisOpen && (
+              <View style={styles.analysisLoading}>
+                <ActivityIndicator size="large" color="#a78bfa" />
+                <Text style={styles.analysisLoadingText}>
+                  {photoIdByUri[analysisOpen] ? 'Analyzing photo…' : 'Uploading + analyzing…'}
+                </Text>
+                <Text style={styles.analysisLoadingHint}>
+                  This usually takes 5–15 seconds. The free-tier server can take longer
+                  on the first call after idle.
+                </Text>
+              </View>
+            )}
+
+            {analysisOpen && analyzingUri !== analysisOpen && analysisError && (
+              <View style={styles.analysisError}>
+                <Ionicons name="alert-circle" size={32} color="#ef4444" />
+                <Text style={styles.analysisErrorText}>{analysisError}</Text>
+                <TouchableOpacity
+                  style={styles.btnPrimary}
+                  onPress={() => analysisOpen && handleAnalyzePhoto(analysisOpen)}
+                >
+                  <Ionicons name="refresh" size={16} color="white" />
+                  <Text style={styles.btnText}>Retry</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {analysisOpen && analyzingUri !== analysisOpen && !analysisError && analysisByUri[analysisOpen] && (
+              <View style={{ gap: 12 }}>
+                {(() => {
+                  const a = analysisByUri[analysisOpen];
+                  const sev = a.severity;
+                  const sevColor =
+                    sev === 'high'   ? '#ef4444' :
+                    sev === 'medium' ? '#f59e0b' :
+                    sev === 'low'    ? '#facc15' : '#34d399';
+                  const sevBg =
+                    sev === 'high'   ? 'rgba(239,68,68,0.12)' :
+                    sev === 'medium' ? 'rgba(245,158,11,0.12)' :
+                    sev === 'low'    ? 'rgba(250,204,21,0.12)' : 'rgba(52,211,153,0.12)';
+                  return (
+                    <>
+                      <View style={[styles.severityPill, { backgroundColor: sevBg, borderColor: sevColor }]}>
+                        <Text style={[styles.severityPillText, { color: sevColor }]}>
+                          {sev === 'none' ? 'NO ISSUES' : `${sev.toUpperCase()} SEVERITY`}
+                        </Text>
+                      </View>
+                      <Text style={styles.analysisSummary}>{a.summary}</Text>
+
+                      {a.concerns.length > 0 && (
+                        <View>
+                          <Text style={styles.analysisSectionTitle}>Concerns</Text>
+                          {a.concerns.map((c, idx) => (
+                            <View key={`c-${idx}`} style={styles.analysisBullet}>
+                              <Ionicons name="warning" size={14} color="#f59e0b" />
+                              <Text style={styles.analysisBulletText}>{c}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
+                      {a.recommendations.length > 0 && (
+                        <View>
+                          <Text style={styles.analysisSectionTitle}>Recommendations</Text>
+                          {a.recommendations.map((r, idx) => (
+                            <View key={`r-${idx}`} style={styles.analysisBullet}>
+                              <Ionicons name="checkmark-circle" size={14} color="#34d399" />
+                              <Text style={styles.analysisBulletText}>{r}</Text>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+                    </>
+                  );
+                })()}
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
     </MainFrame>
   );
 }
@@ -984,6 +1183,115 @@ const styles = StyleSheet.create({
   photoRemoveBtn: {
     position: 'absolute', top: 2, right: 2,
     backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 10,
+  },
+
+  analyzePill: {
+    position:        'absolute',
+    bottom:          4,
+    left:            4,
+    right:           4,
+    flexDirection:   'row',
+    alignItems:      'center',
+    justifyContent:  'center',
+    gap:             4,
+    paddingVertical: 4,
+    borderRadius:    8,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    borderWidth:     1,
+    borderColor:     'rgba(167,139,250,0.4)',
+    minHeight:       22,
+  },
+  analyzePillDone: {
+    borderColor: 'rgba(52,211,153,0.5)',
+  },
+  analyzePillText: {
+    fontFamily: 'poppins-bold',
+    fontSize:   10,
+    color:      '#a78bfa',
+    letterSpacing: 0.3,
+  },
+
+  // ── Inline analysis modal ────────────────────────────────────────────────
+  analysisModal: {
+    width:           '92%',
+    maxHeight:       '85%',
+    backgroundColor: '#0f172a',
+    borderWidth:     1,
+    borderColor:     'rgba(167,139,250,0.25)',
+    borderRadius:    16,
+    padding:         18,
+    gap:             14,
+  },
+  analysisHeader: {
+    flexDirection:  'row',
+    alignItems:     'center',
+    justifyContent: 'space-between',
+  },
+  analysisTitle: {
+    fontFamily:    'poppins-bold',
+    fontSize:      14,
+    color:         '#ffffff',
+    letterSpacing: 0.3,
+  },
+  analysisLoading: { alignItems: 'center', gap: 10, paddingVertical: 24 },
+  analysisLoadingText: {
+    fontFamily: 'poppins-bold',
+    fontSize:   13,
+    color:      '#ffffff',
+  },
+  analysisLoadingHint: {
+    fontFamily: 'poppins-regular',
+    fontSize:   11,
+    color:      'rgba(255,255,255,0.55)',
+    textAlign:  'center',
+    paddingHorizontal: 12,
+    lineHeight: 16,
+  },
+  analysisError: { alignItems: 'center', gap: 12, paddingVertical: 16 },
+  analysisErrorText: {
+    fontFamily: 'poppins-regular',
+    fontSize:   13,
+    color:      '#ef4444',
+    textAlign:  'center',
+  },
+  severityPill: {
+    alignSelf:         'flex-start',
+    paddingVertical:   4,
+    paddingHorizontal: 10,
+    borderRadius:      999,
+    borderWidth:       1,
+  },
+  severityPillText: {
+    fontFamily:    'poppins-bold',
+    fontSize:      10,
+    letterSpacing: 0.6,
+  },
+  analysisSummary: {
+    fontFamily: 'poppins-regular',
+    fontSize:   13,
+    color:      'rgba(255,255,255,0.85)',
+    lineHeight: 19,
+  },
+  analysisSectionTitle: {
+    fontFamily:    'poppins-bold',
+    fontSize:      11,
+    color:         '#a78bfa',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom:  6,
+  },
+  analysisBullet: {
+    flexDirection:  'row',
+    alignItems:     'flex-start',
+    gap:            8,
+    marginBottom:   6,
+  },
+  analysisBulletText: {
+    flex:       1,
+    fontFamily: 'poppins-regular',
+    fontSize:   12,
+    color:      'rgba(255,255,255,0.85)',
+    lineHeight: 17,
   },
 
   actions: { width: '90%', gap: 10, marginBottom: 32 },
