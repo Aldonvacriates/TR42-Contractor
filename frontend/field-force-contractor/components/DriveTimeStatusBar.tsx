@@ -40,16 +40,22 @@ interface DriveTimeResponse {
 //
 // Cory's stakeholder ask was "auto-trigger from Drive toggle" — meaning the
 // bar should appear whenever the contractor is on duty, not just when the
-// limit is close. The bar starts as a quiet green info row and intensifies
-// as the daily 11-hour limit approaches.
+// limit is close. We extended that further: the bar is the only entry point
+// into the DriveTimeTracker screen, so hiding it when off-duty traps the
+// contractor with no way back in. Now it's always rendered:
+//
+//   - on duty + lots of time     → quiet green info row
+//   - on duty + close to limit   → escalating yellow / red
+//   - off duty / sleeper berth   → muted blue "off duty — tap to manage"
+//   - no active session at all   → muted slate "tap to start a session"
 
-type Severity = 'critical' | 'urgent' | 'warning' | 'info'
+type Severity = 'critical' | 'urgent' | 'warning' | 'info' | 'off' | 'no_session'
 
 const ON_DUTY_STATUSES = new Set(['driving', 'on_duty'])
 
-function severityFor(remainingSeconds: number, currentStatus: string | undefined): Severity | null {
-    // Hidden when off duty or in sleeper berth — no need to nag a parked truck.
-    if (!currentStatus || !ON_DUTY_STATUSES.has(currentStatus)) return null
+function severityFor(remainingSeconds: number, currentStatus: string | undefined): Severity {
+    if (!currentStatus) return 'no_session'
+    if (!ON_DUTY_STATUSES.has(currentStatus)) return 'off'
 
     if (remainingSeconds <= 15 * 60) return 'critical'
     if (remainingSeconds <= 30 * 60) return 'urgent'
@@ -91,6 +97,20 @@ const SEVERITY_STYLE: Record<Severity, {
         fg:     '#34d399',
         icon:   'speedometer',
         label:  'ON DUTY',
+    },
+    off: {
+        bg:     'rgba(96,165,250,0.10)',
+        border: 'rgba(96,165,250,0.30)',
+        fg:     '#60a5fa',
+        icon:   'pause-circle-outline',
+        label:  'OFF DUTY',
+    },
+    no_session: {
+        bg:     'rgba(148,163,184,0.10)',
+        border: 'rgba(148,163,184,0.25)',
+        fg:     '#94a3b8',
+        icon:   'play-circle-outline',
+        label:  'DRIVE TIME',
     },
 }
 
@@ -154,8 +174,7 @@ export const DriveTimeStatusBar: FC = () => {
         }
     }, [])
 
-    // First load: subtle placeholder so layout doesn't jump if a banner is
-    // about to appear.
+    // First load: subtle placeholder so layout doesn't jump.
     if (loading) {
         return (
             <View style={[s.bar, s.placeholder]}>
@@ -164,15 +183,33 @@ export const DriveTimeStatusBar: FC = () => {
         )
     }
 
-    if (!state) return null
+    // No-session fallback: state is null (fetch failed or no row exists yet).
+    // Still render the bar as the entry point into the tracker screen so the
+    // contractor can start a session manually.
+    const effectiveState: State = state ?? {
+        drivingSecs:   0,
+        remainingSecs: 11 * 3600,
+        currentStatus: undefined,
+    }
 
-    const sev = severityFor(state.remainingSecs, state.currentStatus)
-    if (!sev) return null
-
+    const sev   = severityFor(effectiveState.remainingSecs, effectiveState.currentStatus)
     const style = SEVERITY_STYLE[sev]
-    const subtitle = sev === 'info'
-        ? `${formatUsed(state.drivingSecs)} of 11h daily limit`
-        : 'Tap to view detail and switch status'
+
+    let title:    string
+    let subtitle: string
+    if (sev === 'no_session') {
+        title    = 'No active drive session'
+        subtitle = 'Tap to start tracking your hours'
+    } else if (sev === 'off') {
+        title    = `Off duty · ${formatUsed(effectiveState.drivingSecs)} today`
+        subtitle = 'Tap to switch back on duty or view detail'
+    } else if (sev === 'info') {
+        title    = `Drive time ${formatRemaining(effectiveState.remainingSecs)}`
+        subtitle = `${formatUsed(effectiveState.drivingSecs)} of 11h daily limit`
+    } else {
+        title    = `Drive time ${formatRemaining(effectiveState.remainingSecs)}`
+        subtitle = 'Tap to view detail and switch status'
+    }
 
     return (
         <TouchableOpacity
@@ -185,9 +222,7 @@ export const DriveTimeStatusBar: FC = () => {
             </View>
             <View style={{ flex: 1 }}>
                 <Text style={[s.severityLabel, { color: style.fg }]}>{style.label}</Text>
-                <Text style={s.title} numberOfLines={1}>
-                    Drive time {formatRemaining(state.remainingSecs)}
-                </Text>
+                <Text style={s.title} numberOfLines={1}>{title}</Text>
                 <Text style={s.subtitle} numberOfLines={1}>{subtitle}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={style.fg} />
