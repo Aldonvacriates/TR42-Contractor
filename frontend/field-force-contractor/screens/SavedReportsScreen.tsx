@@ -21,7 +21,7 @@ import { api } from '@/utils/api'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SavedReport = {
-    id: number
+    id: string
     title: string
     priority: string
     category: string
@@ -47,7 +47,9 @@ function formatDate(iso: string) {
 // ─── Report card ──────────────────────────────────────────────────────────────
 
 const ReportCard: FC<{ report: SavedReport }> = ({ report }) => {
-    const [expanded, setExpanded] = useState(false)
+    // Default to expanded so the contractor lands on full report content
+    // instead of having to tap each row.
+    const [expanded, setExpanded] = useState(true)
     const badge = priorityBadge(report.priority)
 
     return (
@@ -59,15 +61,22 @@ const ReportCard: FC<{ report: SavedReport }> = ({ report }) => {
             {/* ── Header row ── */}
             <View style={s.cardHeader}>
                 <View style={{ flex: 1, gap: 6 }}>
-                    <Text style={s.cardTitle} numberOfLines={expanded ? undefined : 1}>
+                    {/* Title is never truncated. The card defaults to expanded
+                        anyway and the user explicitly asked to see the whole
+                        title at all times. */}
+                    <Text style={s.cardTitle}>
                         {report.title}
                     </Text>
                     <View style={s.cardMeta}>
                         <View style={[s.badge, { backgroundColor: badge.bg, borderColor: badge.border }]}>
-                            <Text style={[s.badgeText, { color: badge.color }]}>{badge.label}</Text>
+                            <Text style={[s.badgeText, { color: badge.color }]} numberOfLines={1}>
+                                {badge.label}
+                            </Text>
                         </View>
                         <View style={s.categoryPill}>
-                            <Text style={s.categoryText}>{report.category}</Text>
+                            <Text style={s.categoryText} numberOfLines={1}>
+                                {report.category}
+                            </Text>
                         </View>
                     </View>
                 </View>
@@ -173,6 +182,7 @@ export const SavedReportsScreen: FC = () => {
                     data={reports}
                     keyExtractor={item => String(item.id)}
                     renderItem={({ item }) => <ReportCard report={item} />}
+                    style={s.flatList}
                     contentContainerStyle={s.list}
                     showsVerticalScrollIndicator={false}
                     ListEmptyComponent={<EmptyState />}
@@ -187,7 +197,11 @@ export const SavedReportsScreen: FC = () => {
 
 const s = StyleSheet.create({
 
-    list: { padding: 16, gap: 12, paddingBottom: 32 },
+    // FlatList itself needs alignSelf:'stretch' to fill MainFrame's centered
+    // ScrollView. Without this the list collapses to its content's natural
+    // width, which then makes the cards (width:100%) collapse along with it.
+    flatList: { alignSelf: 'stretch', width: '100%' },
+    list:     { padding: 16, gap: 12, paddingBottom: 32 },
 
     center: {
         flex: 1,
@@ -205,6 +219,12 @@ const s = StyleSheet.create({
         borderRadius:    16,
         padding:         16,
         gap:             8,
+        // MainFrame uses a centered ScrollView (alignItems: center). Without
+        // alignSelf:'stretch' the card collapses to its content width, which
+        // makes the badges look like single-letter columns. Stretching it
+        // makes the card span the full available width inside the FlatList.
+        alignSelf:       'stretch',
+        width:           '100%',
     },
     cardHeader: {
         flexDirection: 'row',
@@ -227,10 +247,18 @@ const s = StyleSheet.create({
         paddingHorizontal: 8,
         borderRadius:      8,
         borderWidth:       1,
+        // Don't let flex squeeze the badge into a single-char column when
+        // the title is long. flexShrink:0 + alignSelf:flex-start keeps it
+        // sized to its text content.
+        flexShrink:        0,
+        alignSelf:         'flex-start',
     },
     badgeText: {
         fontFamily: 'poppins-bold',
         fontSize:   11,
+        // Belt-and-braces: even if the parent ever does shrink, keep the
+        // text on one line and ellipsize rather than wrap per-letter.
+        // includeFontPadding:false trims the spacing Android adds around glyphs.
     },
     categoryPill: {
         paddingVertical:   3,
@@ -239,6 +267,9 @@ const s = StyleSheet.create({
         backgroundColor:   'rgba(167,139,250,0.1)',
         borderWidth:       1,
         borderColor:       'rgba(167,139,250,0.25)',
+        flexShrink:        0,
+        alignSelf:         'flex-start',
+        maxWidth:          160,
     },
     categoryText: {
         fontFamily: 'poppins-regular',
