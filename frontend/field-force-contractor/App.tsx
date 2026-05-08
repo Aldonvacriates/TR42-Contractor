@@ -24,6 +24,7 @@ import HomeScreen from "./screens/HomeScreen";
 import { InspectionAssistScreen } from "./screens/InspectionAssistScreen";
 import { ChatAssistantScreen } from "./screens/ChatAssistantScreen";
 import { PhotoReviewScreen } from "./screens/PhotoReviewScreen";
+import IncidentReportScreen from "./screens/IncidentReportScreen";
 import InspectionScreen from "./screens/InspectionScreen";
 import { SavedReportsScreen } from "./screens/SavedReportsScreen";
 import { SplashScreen } from "./screens/SplashScreen";
@@ -94,6 +95,7 @@ export type RootStackParamList = {
   InspectionAssist: undefined;
   ChatAssistant: undefined;
   PhotoReview: undefined;
+  IncidentReport: undefined;
   DriveTimeTracker: undefined;
 
   // ── Aldo — Saved Reports ─────────────────────────────────────
@@ -148,6 +150,7 @@ function RootNavigator() {
           <StackNavigator.Screen name="InspectionAssist" component={InspectionAssistScreen}  />
           <StackNavigator.Screen name="ChatAssistant"    component={ChatAssistantScreen}     />
           <StackNavigator.Screen name="PhotoReview"      component={PhotoReviewScreen}       />
+          <StackNavigator.Screen name="IncidentReport"   component={IncidentReportScreen}    />
           <StackNavigator.Screen name="DriveTimeTracker" component={DriveTimeTrackerScreen}  />
           <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />     
           <StackNavigator.Screen name="Login"           component={LoginScreen}           />

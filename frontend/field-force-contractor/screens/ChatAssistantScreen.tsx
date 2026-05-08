@@ -560,6 +560,20 @@ export const ChatAssistantScreen: FC = () => {
                                     Turn voice notes into a structured report with citations.
                                 </Text>
                             </TouchableOpacity>
+
+                            <TouchableOpacity
+                                style={s.hubCard}
+                                onPress={() => navigation.navigate('IncidentReport')}
+                                activeOpacity={0.8}
+                            >
+                                <View style={[s.hubIconWrap, { backgroundColor: 'rgba(239,68,68,0.12)', borderColor: 'rgba(239,68,68,0.3)' }]}>
+                                    <Ionicons name="warning" size={18} color="#ef4444" />
+                                </View>
+                                <Text style={s.hubCardTitle}>Report Incident</Text>
+                                <Text style={s.hubCardBody}>
+                                    Capture a hazard, get OSHA-cited recommendations, save + share PDF.
+                                </Text>
+                            </TouchableOpacity>
                         </View>
                     )}
 
