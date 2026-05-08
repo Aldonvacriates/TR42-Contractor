@@ -12,12 +12,15 @@
 // modify anything here — it is purely for their own records and in case
 // a vendor disputes or flags a ticket.
 //
-// TODO: Replace MOCK_HISTORY with real data fetched from the backend API
-// once the endpoint is available. The shape of each record is documented
-// below so the backend team knows what fields to return.
+// Wired to /api/analytics/jobs (see backend/app/blueprints/analytics/routes.py).
+// That endpoint returns paginated tickets with the parent work_order joined
+// in, which has everything we need for a history record. We map the
+// backend shape into the UI's TaskRecord type so the rendering code below
+// stays unchanged.
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   View,
   Text,
   TouchableOpacity,
@@ -25,12 +28,13 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons }      from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import { RootStackParamList } from '../App';
 import { MainFrame }          from '../components/MainFrame';
 import { colors, spacing, radius, fontSize, fonts } from '../constants/theme';
+import { api } from '../utils/api';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'TaskHistory'>;
 
@@ -49,59 +53,69 @@ type TaskRecord = {
   ticketRef:   string;   // ticket / work order reference number
 };
 
-// ── Mock data ─────────────────────────────────────────────────────────────────
-// Replace with a real API call once the backend endpoint is ready.
-// Sorted newest first within each section.
+// ── Backend → UI transform ───────────────────────────────────────────────────
+// /api/analytics/jobs returns rows with this rough shape (camelCase keys
+// match what marshmallow dumps from the SQL aliases in routes.py):
+//   id, description, route, status, priority, anomaly_flag, anomaly_reason,
+//   start_time, end_time, contractor_*latitude/longitude, notes,
+//   assigned_at, created_at,
+//   work_order_code, work_order_description, work_order_location
 
-const MOCK_HISTORY: TaskRecord[] = [
-  {
-    id:        'H-001',
-    title:     'Safety Equipment Check',
-    vendor:    'Ex-Way Logistics',
-    location:  '1234 Industrial Park Blvd, Austin, TX',
-    date:      'Mar 20, 2026',
-    status:    'Completed',
-    ticketRef: 'WO-2026-001',
-  },
-  {
-    id:        'H-002',
-    title:     'Rooftop HVAC Inspection',
-    vendor:    'Ex-Way Logistics',
-    location:  '890 Commerce Dr, Houston, TX',
-    date:      'Mar 18, 2026',
-    status:    'Completed',
-    ticketRef: 'WO-2026-002',
-  },
-  {
-    id:        'H-003',
-    title:     'Pipeline Pressure Test',
-    vendor:    'Gulf South Contractors',
-    location:  '4400 Refinery Rd, Beaumont, TX',
-    date:      'Mar 15, 2026',
-    status:    'Completed',
-    ticketRef: 'WO-2026-003',
-  },
-  {
-    id:        'H-004',
-    title:     'Electrical Panel Audit',
-    vendor:    'Ex-Way Logistics',
-    location:  '1234 Industrial Park Blvd, Austin, TX',
-    date:      'Mar 20, 2026',
-    status:    'Incomplete',
-    reason:    'Task reassigned — contractor reached mandated rest period before completion.',
-    ticketRef: 'WO-2026-001',
-  },
-  {
-    id:        'H-005',
-    title:     'Water Tank Delivery — Route 7',
-    vendor:    'Gulf South Contractors',
-    location:  '220 Tank Farm Rd, Corpus Christi, TX',
-    date:      'Mar 12, 2026',
-    status:    'Incomplete',
-    reason:    'Vehicle issue reported on route. Task handed off to another contractor.',
-    ticketRef: 'WO-2026-004',
-  },
-];
+interface BackendJob {
+  id:                       string;
+  description:              string | null;
+  route:                    string | null;
+  status:                   string;
+  priority:                 string | null;
+  anomaly_flag:             boolean | null;
+  anomaly_reason:           string | null;
+  start_time:               string | null;
+  end_time:                 string | null;
+  notes:                    string | null;
+  created_at:               string | null;
+  work_order_code:          number | string | null;
+  work_order_description:   string | null;
+  work_order_location:      string | null;
+}
+
+interface JobsResponse {
+  jobs:       BackendJob[];
+  pagination: { page: number; limit: number; total: number; total_pages: number };
+}
+
+function fmtDateLong(iso: string | null): string {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch { return iso; }
+}
+
+function jobTitle(j: BackendJob): string {
+  const desc = (j.description || '').trim();
+  if (desc) return desc.length > 60 ? `${desc.slice(0, 60)}...` : desc;
+  return `Ticket ${j.id.slice(0, 8)}`;
+}
+
+function jobToRecord(j: BackendJob): TaskRecord {
+  const upper = (j.status || '').toUpperCase();
+  const isComplete = upper === 'COMPLETED' || upper === 'APPROVED';
+  // Use end_time when available (the moment work wrapped), otherwise the
+  // creation date as a sensible fallback for incomplete records.
+  const date = j.end_time ?? j.created_at;
+  return {
+    id:        j.id,
+    title:     jobTitle(j),
+    // No "vendor name" surfaces from the analytics jobs endpoint today.
+    // Showing the work order code keeps the meta line useful and is more
+    // honest than fabricating a vendor name.
+    vendor:    j.work_order_code != null ? `Work order #${j.work_order_code}` : '—',
+    location:  j.work_order_location || j.route || 'Location not specified',
+    date:      fmtDateLong(date),
+    status:    isComplete ? 'Completed' : 'Incomplete',
+    reason:    j.anomaly_flag && j.anomaly_reason ? j.anomaly_reason : undefined,
+    ticketRef: String(j.work_order_code ?? j.id.slice(0, 8)),
+  };
+}
 
 // ── TaskCard — one history entry ──────────────────────────────────────────────
 type TaskCardProps = {
@@ -326,39 +340,74 @@ const sectionStyles = StyleSheet.create({
 export default function TaskHistoryScreen() {
   const navigation = useNavigation<Nav>();
 
-  // Tracks which card is expanded — null means all collapsed
-  const [openCard, setOpenCard] = useState<string | null>(null);
+  const [openCard, setOpenCard]   = useState<string | null>(null);
+  const [history,  setHistory]    = useState<TaskRecord[]>([]);
+  const [loading,  setLoading]    = useState(true);
+  const [error,    setError]      = useState<string | null>(null);
+
+  // Pull a healthy chunk so we have several "complete" and "incomplete"
+  // entries to show. The endpoint paginates; 50 is plenty for a demo
+  // contractor and small enough to fetch in one round-trip.
+  const fetchHistory = useCallback(async () => {
+    setError(null);
+    try {
+      const d = await api.authGet<JobsResponse>('/api/analytics/jobs?limit=50');
+      setHistory((d.jobs ?? []).map(jobToRecord));
+    } catch {
+      setError("Couldn't load task history.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Re-fetch on focus so completing a ticket and coming back to history
+  // shows the freshly-completed entry.
+  useFocusEffect(useCallback(() => {
+    fetchHistory().catch(() => {});
+  }, [fetchHistory]));
 
   const toggleCard = (id: string) => {
     setOpenCard(prev => (prev === id ? null : id));
   };
 
-  const completed  = MOCK_HISTORY.filter(r => r.status === 'Completed');
-  const incomplete = MOCK_HISTORY.filter(r => r.status === 'Incomplete');
+  const completed  = history.filter(r => r.status === 'Completed');
+  const incomplete = history.filter(r => r.status === 'Incomplete');
 
   return (
-    <MainFrame header="home" headerMenu={['Menu2', ['Task History']]}>
+    <MainFrame header="home" headerMenu={['Menu2', ['Task History']]} onRefresh={fetchHistory}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {/* Summary strip */}
       <View style={styles.summaryStrip}>
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryNumber}>{completed.length}</Text>
+          <Text style={styles.summaryNumber}>{loading ? '–' : completed.length}</Text>
           <Text style={styles.summaryLabel}>Completed</Text>
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
           <Text style={[styles.summaryNumber, { color: colors.warning }]}>
-            {incomplete.length}
+            {loading ? '–' : incomplete.length}
           </Text>
           <Text style={styles.summaryLabel}>Incomplete</Text>
         </View>
         <View style={styles.summaryDivider} />
         <View style={styles.summaryItem}>
-          <Text style={styles.summaryNumber}>{MOCK_HISTORY.length}</Text>
+          <Text style={styles.summaryNumber}>{loading ? '–' : history.length}</Text>
           <Text style={styles.summaryLabel}>Total</Text>
         </View>
       </View>
+
+      {loading && (
+        <View style={{ alignItems: 'center', padding: spacing.lg }}>
+          <ActivityIndicator size="large" color={colors.textMuted} />
+        </View>
+      )}
+
+      {error && !loading && (
+        <Text style={[styles.emptyText, { color: colors.error, paddingHorizontal: spacing.md }]}>
+          {error}
+        </Text>
+      )}
 
       {/* ── Completed tasks ────────────────────────────── */}
       <View style={styles.section}>

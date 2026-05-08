@@ -200,16 +200,18 @@ export const MainFrame: FC<Props> = (props) => {
     ? props.header
     : 'none';
 
-  const handleRefresh =  () =>{
-
+  // Pull-to-refresh: show the spinner while the caller's onRefresh promise
+  // is in flight, then clear it. Without the await, setRefresh(false) was
+  // firing synchronously and the spinner never actually appeared.
+  const handleRefresh = async () => {
+    if (!props.onRefresh) return;
     setRefresh(true);
-    if(props.onRefresh){
-       
-        props.onRefresh()
-       
+    try {
+      await Promise.resolve(props.onRefresh());
+    } finally {
+      setRefresh(false);
     }
-    setRefresh(false);
-  }
+  };
   const handleScroll = (event:NativeSyntheticEvent<NativeScrollEvent>) =>{
     const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
     scrollMetrics.current = {

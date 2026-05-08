@@ -20,6 +20,11 @@ class PhotoOutSchema(Schema):
     updated_by = fields.Str()
     # Populated by the route handler before serialisation.
     url = fields.Str()
+    # Persisted Gemini-Vision result + timestamp. Null on photos that have
+    # never been analyzed. Frontend uses these to render the saved analysis
+    # immediately without burning fresh Gemini quota on every open.
+    ai_analysis = fields.Raw(allow_none=True)
+    ai_analyzed_at = fields.DateTime(allow_none=True)
 
 
 photo_schema = PhotoOutSchema()
