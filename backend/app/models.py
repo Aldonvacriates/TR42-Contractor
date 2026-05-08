@@ -656,6 +656,8 @@ class Ticket(Base):
     created_by: Mapped[str] = mapped_column(ForeignKey('auth_user.id'), nullable=False)
     updated_by: Mapped[str] = mapped_column(ForeignKey('auth_user.id'), nullable=False)
 
+    work_order = relationship("Work_order", foreign_keys=[work_order_id])
+
 
 class TicketPhoto(Base):
     """Photos uploaded by a contractor against a ticket they're assigned to.

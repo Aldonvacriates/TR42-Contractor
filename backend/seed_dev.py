@@ -39,6 +39,7 @@ from app.models import (
     AuthUser, Contractor, Vendor,
     InspectionTemplate, InspectionSection, InspectionItem,
     DutySessions, DutyLogs,
+    Client, Service, Work_order, Ticket,
 )
 
 import os
@@ -275,7 +276,133 @@ def seed_drive_time(session, contractor_id):
     return session_obj
 
 
+# ── Tickets / work orders ─────────────────────────────────────────────────────
+
+# Demo job sites clustered around Austin, TX so the map view shows pins on a
+# coherent region instead of dots scattered across the country.
+DEMO_SITES = [
+    # (label, lat, lng, status, service_name, description, hours_offset)
+    ('Site A — Downtown', 30.2672, -97.7431, 'ASSIGNED', 'Chemical Delivery',
+     'Deliver 200 gal sodium hydroxide, north loading dock', 4),
+    ('Site B — North Loop', 30.3105, -97.7220, 'ASSIGNED', 'Inspection',
+     'Routine pre-trip equipment inspection', 26),
+    ('Site C — East Riverside', 30.2402, -97.7140, 'IN_PROGRESS', 'Hauling',
+     'Haul drilling waste to disposal facility', 0),
+    ('Site D — South Lamar', 30.2419, -97.7813, 'COMPLETED', 'Chemical Delivery',
+     'Delivered hydrochloric acid, signed BOL on file', -8),
+    ('Site E — Round Rock', 30.4083, -97.6680, 'COMPLETED', 'Inspection',
+     'Quarterly safety walk, all items pass', -32),
+    ('Site F — West Lake Hills', 30.2960, -97.8120, 'PENDING_APPROVAL',
+     'Hauling', 'Sand transport, awaiting client sign-off', 2),
+]
+
+
+def seed_tickets(session, vendor, contractor, vendor_auth):
+    """Create demo work_orders + tickets so the contractor app has visible
+    pins on the map screen and realistic items in the Tickets list."""
+    print('Seeding work orders + tickets...')
+
+    # Demo client (work_order requires client_id NOT NULL).
+    client = Client(
+        client_name='Permian Basin Oilfield Services',
+        client_code='PBOS-001',
+        primary_contact_name='Jane Operations',
+        company_email='ops@pbos-demo.test',
+        company_phone='555-200-3000',
+        created_by=vendor_auth.id,
+        updated_by=vendor_auth.id,
+    )
+    session.add(client)
+    session.flush()
+
+    # Service catalog used by both work_orders and tickets (service_type FK).
+    service_names = sorted({site[4] for site in DEMO_SITES})
+    services = {}
+    for name in service_names:
+        svc = Service(
+            service=name,
+            created_by=vendor_auth.id,
+            updated_by=vendor_auth.id,
+        )
+        session.add(svc)
+        session.flush()
+        services[name] = svc
+
+    for label, lat, lng, status, service_name, description, hours_offset in DEMO_SITES:
+        due = now_utc() + timedelta(hours=hours_offset)
+        wo = Work_order(
+            assigned_vendor=vendor.id,
+            client_id=client.id,
+            description=description,
+            current_status=status,
+            location=label,
+            location_type='well_site',
+            latitude=lat,
+            longitude=lng,
+            priority='HIGH' if status in ('IN_PROGRESS', 'PENDING_APPROVAL') else 'MEDIUM',
+            service_type=services[service_name].id,
+            estimated_start_date=due - timedelta(hours=1),
+            estimated_end_date=due + timedelta(hours=2),
+            created_by=vendor_auth.id,
+            updated_by=vendor_auth.id,
+        )
+        session.add(wo)
+        session.flush()
+
+        ticket = Ticket(
+            work_order_id=wo.id,
+            description=description,
+            assigned_contractor=contractor.id,
+            priority=wo.priority,
+            status=status,
+            vendor_id=vendor.id,
+            due_date=due,
+            assigned_at=now_utc() - timedelta(hours=1),
+            service_type=services[service_name].id,
+            notes=None,
+            created_by=vendor_auth.id,
+            updated_by=vendor_auth.id,
+        )
+        # For COMPLETED / IN_PROGRESS, fill in the contractor start coords so
+        # the demo shows a realistic "task captured location" trail.
+        if status in ('IN_PROGRESS', 'COMPLETED', 'PENDING_APPROVAL'):
+            ticket.start_time = now_utc() - timedelta(hours=2)
+            ticket.contractor_start_latitude = lat
+            ticket.contractor_start_longitude = lng
+        if status in ('COMPLETED', 'PENDING_APPROVAL'):
+            ticket.end_time = now_utc() - timedelta(hours=1)
+            ticket.contractor_end_latitude = lat
+            ticket.contractor_end_longitude = lng
+        session.add(ticket)
+
+    session.commit()
+    print(f'  [OK] {len(DEMO_SITES)} tickets across {len(services)} services, anchored on Austin metro')
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
+
+def seed_tickets_only():
+    """Run only seed_tickets, looking up existing demo vendor/contractor by
+    username. Used to add map-ready demo tickets to a populated database
+    (e.g. Supabase) without re-seeding users or inspection templates."""
+    with app.app_context():
+        vendor_auth = db.session.query(AuthUser).filter_by(username='vendor').first()
+        contractor_auth = db.session.query(AuthUser).filter_by(username='aldo').first()
+        if not vendor_auth or not contractor_auth:
+            print('REFUSING: --tickets-only requires existing "vendor" and "aldo" users.')
+            print('  Run the full seed first, or insert those users manually.')
+            raise SystemExit(2)
+        vendor = db.session.query(Vendor).filter_by(created_by=vendor_auth.id).first()
+        contractor = db.session.query(Contractor).filter_by(user_id=contractor_auth.id).first()
+        if not vendor or not contractor:
+            print('REFUSING: existing users found but vendor/contractor profiles missing.')
+            raise SystemExit(2)
+        seed_tickets(db.session, vendor, contractor, vendor_auth)
+        print()
+        print('=' * 50)
+        print('Tickets-only seed complete!')
+        print('=' * 50)
+
 
 def seed():
     with app.app_context():
@@ -285,8 +412,7 @@ def seed():
         vendor_auth, vendor, contractor_auth, contractor = seed_users(db.session)
         seed_inspection_template(db.session, created_by=vendor_auth.id)
         seed_drive_time(db.session, contractor.id)
-        # seed_tickets is intentionally absent. Tickets/Work_orders schema is
-        # still in flux on team Supabase — add back once the columns are stable.
+        seed_tickets(db.session, vendor, contractor, vendor_auth)
 
         print()
         print('=' * 50)
@@ -296,12 +422,20 @@ def seed():
 
 
 if __name__ == '__main__':
+    import sys
+    tickets_only = '--tickets-only' in sys.argv
+
     # ── Safety guard ────────────────────────────────────────────────────────
     # The May-2026 incident happened when seed scripts ran against the shared
     # Render/Supabase DB. wipe() has been removed, but seeding can still
     # create duplicate / conflicting rows on a populated shared DB and may
     # leak demo passwords into prod. Block any non-SQLite target unless
     # explicitly opted in.
+    #
+    # --tickets-only is the safer subset for remote runs (no auth users, no
+    # password hashes, just demo work_orders + tickets). It still requires
+    # ALLOW_DESTRUCTIVE_SEED=1 against a remote DB so a tired engineer can't
+    # `python seed_dev.py --tickets-only` straight into production by accident.
     db_url = os.environ.get('DATABASE_URL', '')
     if db_url and not db_url.startswith('sqlite'):
         if os.environ.get('ALLOW_DESTRUCTIVE_SEED') != '1':
@@ -311,8 +445,13 @@ if __name__ == '__main__':
             print('  DATABASE_URL =', db_url.split('@')[-1])  # show host only
             print()
             print('To run anyway, set ALLOW_DESTRUCTIVE_SEED=1 in your env.')
+            if not tickets_only:
+                print('Consider --tickets-only if you only need demo tickets.')
             print('Coordinate with the team lead first — see DATABASE_SAFETY.md.')
             print('=' * 60)
             raise SystemExit(1)
 
-    seed()
+    if tickets_only:
+        seed_tickets_only()
+    else:
+        seed()
