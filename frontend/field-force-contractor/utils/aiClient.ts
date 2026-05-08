@@ -29,11 +29,6 @@ export interface TicketPhotoSummary {
   created_by:       string;
   updated_by:       string;
   url:              string;
-  /** Saved Gemini-Vision analysis (PhotoAnalysis shape) and timestamp.
-   *  Null on photos that have never been analyzed. Surfaced so callers
-   *  can render the cached result instead of re-calling /api/ai/analyze-photo. */
-  ai_analysis:      PhotoAnalysis | null;
-  ai_analyzed_at:   string | null;
 }
 
 /** Slim shape we need from /contractors/assigned-tickets for the
@@ -78,28 +73,6 @@ export interface SavedReport extends InspectionReport {
   inspection_id: string | null;
   raw_notes:     string | null;
   created_at:    string;
-}
-
-/** One turn inside a saved Field Assistant conversation. timestamp is the
- *  display string the chat screen captured (TimeFormater output). */
-export interface SavedChatMessage {
-  role:      'user' | 'assistant';
-  content:   string;
-  timestamp?: string | null;
-}
-
-/** A persisted Field Assistant conversation. The backend mirrors
- *  ai_inspection_reports — same ownership model, same SavedReports
- *  surface lists both. */
-export interface SavedChat {
-  id:            string;
-  contractor_id: string;
-  title:         string;
-  summary:       string | null;
-  messages:      SavedChatMessage[];
-  photo_id:      string | null;
-  created_at:    string;
-  updated_at:    string | null;
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────────
@@ -320,32 +293,6 @@ export function saveReport(
 /** List saved reports for the logged-in contractor (newest first). */
 export function listReports(): Promise<SavedReport[]> {
   return jsonRequest<SavedReport[]>('/api/ai/reports');
-}
-
-/** Persist a Field Assistant conversation. photoId is optional — pass it
- *  when the contractor attached a job-site photo at save time. The
- *  backend re-validates that the caller is the assigned contractor for
- *  the photo's parent ticket. */
-export function saveChat(args: {
-  title:    string;
-  summary?: string | null;
-  messages: SavedChatMessage[];
-  photoId?: string | null;
-}): Promise<SavedChat> {
-  return jsonRequest<SavedChat>('/api/ai/save-chat', {
-    method: 'POST',
-    body:   JSON.stringify({
-      title:    args.title,
-      summary:  args.summary ?? null,
-      messages: args.messages,
-      photo_id: args.photoId ?? null,
-    }),
-  });
-}
-
-/** List saved Field Assistant conversations for the caller (newest first). */
-export function listChats(): Promise<SavedChat[]> {
-  return jsonRequest<SavedChat[]>('/api/ai/chats');
 }
 
 // ── Photo review (uses /api/photos and /contractors endpoints) ─────────────

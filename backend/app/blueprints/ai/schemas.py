@@ -84,54 +84,9 @@ class AiReportSchema(Schema):
     created_at          = fields.DateTime()
 
 
-# ── Saved Field Assistant conversation schemas ────────────────────────────
-#
-# Mirror the inspection-report shape so SavedReports can render both kinds
-# of saved AI artefact through a single list endpoint pattern.
-
-class _ChatMessageSchema(Schema):
-    """One {role, content, timestamp} turn inside a saved conversation."""
-    role      = fields.Str(
-        required=True,
-        validate=validate.OneOf(['user', 'assistant']),
-    )
-    content   = fields.Str(required=True, validate=validate.Length(min=1, max=10000))
-    timestamp = fields.Str(required=False, allow_none=True)
-
-
-class SaveChatSchema(Schema):
-    """Payload for POST /api/ai/save-chat."""
-    title    = fields.Str(required=True, validate=validate.Length(min=1, max=300))
-    summary  = fields.Str(required=False, allow_none=True, load_default=None)
-    messages = fields.List(
-        fields.Nested(_ChatMessageSchema),
-        required=True,
-        validate=validate.Length(min=1, max=100),
-    )
-    # Optional FK to ticket_photo. Backend re-validates ownership before
-    # persisting so a contractor can only attach photos they could have
-    # uploaded themselves.
-    photo_id = fields.Str(required=False, allow_none=True, load_default=None)
-
-
-class AiChatSessionSchema(Schema):
-    """Shape of a saved conversation returned to the client."""
-    id            = fields.Str()
-    contractor_id = fields.Str()
-    title         = fields.Str()
-    summary       = fields.Str(allow_none=True)
-    messages      = fields.Raw()  # list of {role, content, timestamp}
-    photo_id      = fields.Str(allow_none=True)
-    created_at    = fields.DateTime()
-    updated_at    = fields.DateTime(allow_none=True)
-
-
 inspection_assist_schema = InspectionAssistSchema()
 refine_report_schema     = RefineReportSchema()
 chat_schema              = ChatSchema()
 save_report_schema       = SaveReportSchema()
 ai_report_schema         = AiReportSchema()
 ai_reports_schema        = AiReportSchema(many=True)
-save_chat_schema         = SaveChatSchema()
-ai_chat_session_schema   = AiChatSessionSchema()
-ai_chat_sessions_schema  = AiChatSessionSchema(many=True)

@@ -1,63 +1,75 @@
-// LicenseScreen.tsx  —  Troy (rewired by Aldo for real backend data)
-// Shows the contractor's licenses with expandable detail rows. Reached by
-// tapping "License" on Profile or by tapping the LicenseExpirationBanner.
+// LicenseScreen.tsx  —  Troy
+// Shows the contractor's license card with expandable detail rows.
+// Reached by tapping "License" on the Profile screen.
 //
-// Data source: GET /contractors/me/licenses returns each license with a
-// computed days_until_expiration field. We render one card per license,
-// sorted soonest-expiration first, so the most urgent shows at the top.
+// Uses MainFrame header="home" with Menu2 providing the back arrow
+// and "License Details" title. No SubHeader needed.
 //
-// Status logic (derived from days_until_expiration, never hardcoded):
-//   Expired       — days < 0
-//   Expiring Soon — 0 <= days <= 30
-//   Active        — days > 30
+// ── LICENSE STATUS LOGIC ──────────────────────────────────────────────────────
+// Status is derived from the expiration date at runtime — never hardcoded:
+//   Expired        — past the expiration date                 (red)
+//   Expiring Soon  — within the next 30 days                  (amber)
+//   Active         — more than 30 days away                   (green)
+// ──────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   StatusBar,
-  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { Ionicons }      from '@expo/vector-icons';
-import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 
 import { MainFrame } from '../components/MainFrame';
 import { colors, spacing, radius, fontSize, fonts } from '../constants/theme';
-import { api } from '../utils/api';
 
-interface BackendLicense {
-  id:                       string;
-  license_type:             string;
-  license_number:           string;
-  license_state:            string | null;
-  license_expiration_date:  string | null;  // ISO date
-  license_verified:         boolean | null;
-  days_until_expiration:    number | null;
-}
+// ── Placeholder license data ──────────────────────────────────────────────────
+const MOCK_LICENSE = {
+  name:       'John Doe',
+  type:       'CITIZEN',
+  licenseNo:  '25415236563',
+  expiration: '01/20/2025',
+  role:       'Contractor',
+  conditions: 'None',
+  taxClass:   '1099',
+  photoUri:   'https://randomuser.me/api/portraits/men/32.jpg',
+};
 
-// ── Status helpers ────────────────────────────────────────────────────────
+const DEMO_ACTIVE_DATE = '12/31/2027';
+
+// ── License status helpers ────────────────────────────────────────────────────
 const EXPIRING_SOON_DAYS = 30;
 type LicenseStatus = 'Active' | 'Expiring Soon' | 'Expired';
 
-function getLicenseStatus(daysUntil: number | null): LicenseStatus {
-  if (daysUntil == null) return 'Active';
+function getLicenseStatus(expirationMMDDYYYY: string): LicenseStatus {
+  const [month, day, year] = expirationMMDDYYYY.split('/').map(Number);
+  const expDate = new Date(year, month - 1, day);
+  const today   = new Date();
+  today.setHours(0, 0, 0, 0);
+  expDate.setHours(0, 0, 0, 0);
+  const daysUntil = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
   if (daysUntil < 0)                   return 'Expired';
   if (daysUntil <= EXPIRING_SOON_DAYS) return 'Expiring Soon';
   return 'Active';
+}
+
+function getDaysUntilExpiration(expirationMMDDYYYY: string): number {
+  const [month, day, year] = expirationMMDDYYYY.split('/').map(Number);
+  const expDate = new Date(year, month - 1, day);
+  const today   = new Date();
+  today.setHours(0, 0, 0, 0);
+  expDate.setHours(0, 0, 0, 0);
+  return Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 function getStatusColor(status: LicenseStatus): string {
   if (status === 'Expired')       return colors.error;
   if (status === 'Expiring Soon') return colors.warning;
   return colors.success;
-}
-
-function fmtDate(iso: string | null): string {
-  if (!iso) return '—';
-  try { return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
-  catch { return iso; }
 }
 
 // ── DetailRow ─────────────────────────────────────────────────────────────────
@@ -82,180 +94,91 @@ const rowStyles = StyleSheet.create({
   value:     { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.textMuted, paddingLeft: 20, marginTop: spacing.xs },
 });
 
-// ── License card (one per license) ───────────────────────────────────────────
+// ── LicenseScreen ─────────────────────────────────────────────────────────────
+export default function LicenseScreen() {
+  const navigation = useNavigation<any>();
 
-interface CardProps {
-  license: BackendLicense;
-  expanded: boolean;
-  onToggle: () => void;
-}
+  const [openRow,       setOpenRow]       = useState<string | null>(null);
+  const [showingActive, setShowingActive] = useState(false);
 
-const LicenseCard = ({ license, expanded, onToggle }: CardProps) => {
-  const status      = getLicenseStatus(license.days_until_expiration);
-  const statusColor = getStatusColor(status);
-  const showWarning = status !== 'Active';
-  const days        = license.days_until_expiration ?? 0;
+  const currentExpiration = showingActive ? DEMO_ACTIVE_DATE : MOCK_LICENSE.expiration;
+  const licenseStatus     = getLicenseStatus(currentExpiration);
+  const daysUntilExp      = getDaysUntilExpiration(currentExpiration);
+  const statusColor       = getStatusColor(licenseStatus);
+  const showWarning       = licenseStatus === 'Expired' || licenseStatus === 'Expiring Soon';
+
+  const toggleRow = (key: string) => setOpenRow(prev => (prev === key ? null : key));
 
   return (
-    <View style={styles.cardWrap}>
-      {/* Warning strip */}
+    <MainFrame header="home" headerMenu={['Menu2', ['License Details']]}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
+
+      {/* Warning banner — only shown when expired or expiring soon */}
       {showWarning && (
         <View style={[
           styles.warningBanner,
           {
-            borderColor: statusColor,
-            backgroundColor: status === 'Expired'
+            borderColor:     statusColor,
+            backgroundColor: licenseStatus === 'Expired'
               ? 'rgba(248,113,113,0.10)'
               : 'rgba(245,158,11,0.10)',
           },
         ]}>
           <Ionicons
-            name={status === 'Expired' ? 'close-circle-outline' : 'warning-outline'}
+            name={licenseStatus === 'Expired' ? 'close-circle-outline' : 'warning-outline'}
             size={18}
             color={statusColor}
           />
           <Text style={[styles.warningText, { color: statusColor }]}>
-            {status === 'Expired'
-              ? `Expired ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'} ago. Contact your vendor to renew.`
-              : `Expires in ${days} day${days === 1 ? '' : 's'}. Renew soon to avoid disruption.`
+            {licenseStatus === 'Expired'
+              ? `Your license expired ${Math.abs(daysUntilExp)} day${Math.abs(daysUntilExp) === 1 ? '' : 's'} ago. Contact your vendor to renew.`
+              : `Your license expires in ${daysUntilExp} day${daysUntilExp === 1 ? '' : 's'}. Renew soon to avoid disruption.`
             }
           </Text>
         </View>
       )}
 
-      {/* Card */}
+      {/* License card */}
       <View style={styles.licenseCard}>
-        <View style={styles.iconWrap}>
-          <Ionicons name="ribbon-outline" size={32} color={statusColor} />
-        </View>
+        <Image source={{ uri: MOCK_LICENSE.photoUri }} style={styles.photo} />
         <View style={styles.cardInfo}>
-          <Text style={styles.cardName} numberOfLines={2}>{license.license_type}</Text>
-          {license.license_state ? (
-            <Text style={styles.cardType}>{license.license_state}</Text>
-          ) : null}
+          <Text style={styles.cardName}>{MOCK_LICENSE.name}</Text>
+          <Text style={styles.cardType}>{MOCK_LICENSE.type}</Text>
           <Text style={styles.licenseLabel}>License No.</Text>
-          <Text style={styles.licenseNumber}>{license.license_number}</Text>
+          <Text style={styles.licenseNumber}>{MOCK_LICENSE.licenseNo}</Text>
           <View style={styles.statusRow}>
             <Text style={styles.statusLabel}>Status </Text>
-            <Text style={[styles.statusValue, { color: statusColor }]}>{status}</Text>
+            <Text style={[styles.statusValue, { color: statusColor }]}>{licenseStatus}</Text>
           </View>
         </View>
       </View>
 
-      {/* Expand toggle */}
-      <TouchableOpacity onPress={onToggle} style={styles.toggleBtn} activeOpacity={0.8}>
-        <Text style={styles.toggleText}>
-          {expanded ? 'Hide details' : 'Show details'}
+      {/* Expandable detail rows */}
+      <View style={styles.detailsList}>
+        <DetailRow label="Expiration" value={currentExpiration} isOpen={openRow === 'expiration'} onToggle={() => toggleRow('expiration')} />
+        <DetailRow label="Role"       value={MOCK_LICENSE.role}       isOpen={openRow === 'role'}       onToggle={() => toggleRow('role')} />
+        <DetailRow label="Conditions" value={MOCK_LICENSE.conditions} isOpen={openRow === 'conditions'} onToggle={() => toggleRow('conditions')} />
+        <DetailRow label="Tax Class"  value={MOCK_LICENSE.taxClass}   isOpen={openRow === 'taxClass'}   onToggle={() => toggleRow('taxClass')} />
+      </View>
+
+      {/* Dev toggle button */}
+      <TouchableOpacity
+        style={styles.devToggleBtn}
+        onPress={() => setShowingActive(prev => !prev)}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="construct-outline" size={14} color={colors.warning} />
+        <Text style={styles.devToggleText}>
+          Toggle Status (Dev) — showing:{' '}
+          <Text style={{ fontFamily: fonts.bold }}>{showingActive ? 'Active' : 'Expired'}</Text>
         </Text>
-        <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={16} color={colors.textMuted} />
       </TouchableOpacity>
-
-      {expanded && (
-        <View style={styles.detailsList}>
-          <View style={rowStyles.container}>
-            <View style={rowStyles.header}>
-              <View style={rowStyles.dot} />
-              <Text style={rowStyles.label}>Expiration</Text>
-            </View>
-            <Text style={rowStyles.value}>{fmtDate(license.license_expiration_date)}</Text>
-          </View>
-          <View style={rowStyles.container}>
-            <View style={rowStyles.header}>
-              <View style={rowStyles.dot} />
-              <Text style={rowStyles.label}>State</Text>
-            </View>
-            <Text style={rowStyles.value}>{license.license_state || '—'}</Text>
-          </View>
-          <View style={rowStyles.container}>
-            <View style={rowStyles.header}>
-              <View style={rowStyles.dot} />
-              <Text style={rowStyles.label}>Verified</Text>
-            </View>
-            <Text style={rowStyles.value}>
-              {license.license_verified === true
-                ? 'Yes'
-                : license.license_verified === false ? 'No' : 'Pending'}
-            </Text>
-          </View>
-        </View>
-      )}
-    </View>
-  );
-};
-
-// ── LicenseScreen ─────────────────────────────────────────────────────────
-
-export default function LicenseScreen() {
-  const navigation = useNavigation<any>();
-  const [licenses, setLicenses] = useState<BackendLicense[]>([]);
-  const [loading,  setLoading]  = useState(true);
-  const [error,    setError]    = useState<string | null>(null);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const fetchLicenses = useCallback(async () => {
-    setError(null);
-    try {
-      const d = await api.authGet<{ licenses: BackendLicense[]; count: number }>('/contractors/me/licenses');
-      const rows = d.licenses ?? [];
-      setLicenses(rows);
-      // Auto-expand the most urgent license so the warning detail is
-      // visible without an extra tap. Only on the first load — don't
-      // re-collapse what the user already chose to inspect.
-      setExpandedId(prev => prev ?? rows[0]?.id ?? null);
-    } catch {
-      setError("Couldn't load licenses.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  // Re-fetch on focus so navigating back from a sub-screen picks up any
-  // server-side updates (renewal, new license added, etc.).
-  useFocusEffect(useCallback(() => {
-    fetchLicenses().catch(() => {});
-  }, [fetchLicenses]));
-
-  return (
-    <MainFrame header="home" headerMenu={['Menu2', ['License Details']]} onRefresh={fetchLicenses}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
-
-      {loading && (
-        <View style={styles.empty}>
-          <ActivityIndicator size="large" color="#9ca3af" />
-        </View>
-      )}
-
-      {error && !loading && (
-        <View style={[styles.warningBanner, { borderColor: colors.error, backgroundColor: 'rgba(248,113,113,0.10)' }]}>
-          <Ionicons name="alert-circle-outline" size={18} color={colors.error} />
-          <Text style={[styles.warningText, { color: colors.error }]}>{error}</Text>
-        </View>
-      )}
-
-      {!loading && licenses.length === 0 && !error && (
-        <View style={styles.empty}>
-          <Ionicons name="ribbon-outline" size={32} color="rgba(255,255,255,0.3)" />
-          <Text style={styles.emptyText}>No licenses on file. Contact your vendor.</Text>
-        </View>
-      )}
-
-      {licenses.map(l => (
-        <LicenseCard
-          key={l.id}
-          license={l}
-          expanded={expandedId === l.id}
-          onToggle={() => setExpandedId(prev => prev === l.id ? null : l.id)}
-        />
-      ))}
 
     </MainFrame>
   );
 }
 
 const styles = StyleSheet.create({
-  cardWrap:    { width: '100%', maxWidth: 480, alignSelf: 'center', marginTop: spacing.md },
-  empty:       { alignItems: 'center', paddingVertical: 40, gap: 8 },
-  emptyText:   { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.textMuted },
   warningBanner: {
     flexDirection: 'row', alignItems: 'flex-start', gap: spacing.sm,
     borderWidth: 1, borderRadius: radius.md, padding: spacing.md,
@@ -269,17 +192,11 @@ const styles = StyleSheet.create({
     marginHorizontal: spacing.md, marginTop: spacing.md,
     borderRadius: radius.lg, padding: spacing.md, gap: spacing.md,
     borderWidth: 1, borderColor: colors.border,
+    width: '100%', maxWidth: 480, alignSelf: 'center',
   },
-  iconWrap: {
-    width:           70,
-    height:          70,
-    borderRadius:    8,
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    alignItems:      'center',
-    justifyContent:  'center',
-  },
+  photo:         { width: 70, height: 70, borderRadius: 8, backgroundColor: colors.cardAlt },
   cardInfo:      { flex: 1, gap: 2 },
-  cardName:      { fontFamily: fonts.bold,    fontSize: fontSize.base, color: colors.textWhite },
+  cardName:      { fontFamily: fonts.bold,    fontSize: fontSize.lg, color: colors.textWhite },
   cardType:      { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.textLight, marginBottom: 6 },
   licenseLabel:  { fontFamily: fonts.regular, fontSize: fontSize.xs, color: colors.primary },
   licenseNumber: { fontFamily: fonts.bold,    fontSize: fontSize.sm, color: colors.textWhite, marginBottom: 4 },
@@ -287,24 +204,17 @@ const styles = StyleSheet.create({
   statusLabel:   { fontFamily: fonts.regular, fontSize: fontSize.sm, color: colors.textLight },
   statusValue:   { fontFamily: fonts.bold,    fontSize: fontSize.sm },
 
-  toggleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 8,
-    marginTop: 4,
-    alignSelf: 'flex-start',
-    marginLeft: spacing.md,
-  },
-  toggleText: {
-    fontFamily: fonts.regular,
-    fontSize:   fontSize.sm,
-    color:      colors.textMuted,
-  },
-
   detailsList: {
     gap: spacing.sm, paddingHorizontal: spacing.md,
-    marginTop: spacing.xs,
+    width: '100%', maxWidth: 480, alignSelf: 'center', marginTop: spacing.md,
   },
+
+  devToggleBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    alignSelf: 'center', marginTop: spacing.xl, marginBottom: spacing.md,
+    paddingVertical: spacing.sm, paddingHorizontal: spacing.md,
+    borderRadius: radius.sm, borderWidth: 1,
+    borderColor: colors.warning, backgroundColor: 'rgba(245,158,11,0.08)',
+  },
+  devToggleText: { fontFamily: fonts.regular, fontSize: fontSize.xs, color: colors.warning },
 });

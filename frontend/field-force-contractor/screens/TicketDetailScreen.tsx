@@ -1,7 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Alert, ActivityIndicator, Linking, Image } from 'react-native';
-import { uploadPhotoOrEnqueue } from '../utils/photoOutbox';
-import { useNetwork } from '../contexts/NetworkContext';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Alert, ActivityIndicator, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { MainFrame } from '../components/MainFrame';
@@ -9,10 +7,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SETTINGS_BIOMETRIC_KEY } from './ProfileScreen';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import * as LocalAuthentication from 'expo-local-authentication';
-import { verifyOfflinePin } from '../utils/secureStorage';
-import { ticketDisplayTitle } from '../utils/ticketLabels';
-import { analyzePhoto, friendlyAIError, PhotoAnalysis } from '../utils/aiClient';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { api } from '../utils/api';
 
@@ -45,22 +39,6 @@ export default function TicketDetailScreen() {
   const [photoUris, setPhotoUris] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
   const [inspectionDone, setInspectionDone] = useState(false);
-  // Real backend ticket data, fetched on mount. Falls back to the
-  // hardcoded placeholder below when null (still loading or fetch failed).
-  const [ticketData, setTicketData] = useState<any | null>(null);
-
-  // ── Inline photo analysis state ────────────────────────────────────────────
-  // Map of local photo URI -> server photo id, populated on first eager
-  // upload so a re-analyze tap doesn't re-upload the same bytes.
-  const [photoIdByUri, setPhotoIdByUri] = useState<Record<string, string>>({});
-  // Cached analysis per local URI so closing and reopening the modal is
-  // instant and doesn't burn another Gemini call.
-  const [analysisByUri, setAnalysisByUri] = useState<Record<string, PhotoAnalysis>>({});
-  // Per-photo "currently analyzing" state, keyed by local URI so multiple
-  // photos can be analyzed independently without spinners interfering.
-  const [analyzingUri, setAnalyzingUri]   = useState<string | null>(null);
-  const [analysisOpen, setAnalysisOpen]   = useState<string | null>(null);
-  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const pinRefs = useRef<(TextInput | null)[]>([null, null, null, null, null, null]);
 
   // ── Load saved biometric preference ────────────────────────────────────────
@@ -82,67 +60,10 @@ export default function TicketDetailScreen() {
     loadPreference();
   }, []);
 
-  // ── Fetch real ticket data ─────────────────────────────────────────────────
-  // The backend doesn't currently expose GET /tickets/<id>, so we pull the
-  // contractor's full assigned-tickets list and find ours by id. Cheap
-  // enough for a 3-ticket demo, would need a dedicated endpoint at scale.
-  //
-  // Wrapped so pull-to-refresh can reuse the same code path.
-  const fetchTicketData = async () => {
-    try {
-      const rows = await api.authGet<any[]>('/contractors/assigned-tickets');
-      const t = (rows ?? []).find((r: any) => r.id === String(taskId));
-      if (t) {
-        setTicketData(t);
-        const s = (t.status || '').toUpperCase();
-        if (s === 'IN_PROGRESS')          setTaskStatus('in_progress');
-        else if (s === 'PENDING_APPROVAL' || s === 'COMPLETED' || s === 'APPROVED') setTaskStatus('completed');
-        else                              setTaskStatus('to_do');
-        if (t.notes && !notes)            setNotes(t.notes);
-      }
-    } catch {
-      // Keep placeholder data on fetch failure.
-    }
-  };
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchTicketData().catch(() => {});
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [taskId]);
-
-
-  // Auto-close modal after success + persist start to backend
+  // Auto-close modal after success
   useEffect(() => {
     if (verificationStep !== 'success') return;
-
-    // Fire-and-forget the real status change to the backend. The schema
-    // requires start_time + lat/lng when transitioning to IN_PROGRESS, so
-    // we read the location captured during the verification step. UI
-    // continues regardless of the API result so a transient network blip
-    // doesn't strand the contractor on the success screen.
-    (async () => {
-      try {
-        const acceptRaw = await AsyncStorage.getItem(acceptLocationKey(taskId));
-        const accept    = acceptRaw ? JSON.parse(acceptRaw) : null;
-        const lat       = accept?.coords?.latitude;
-        const lng       = accept?.coords?.longitude;
-        if (lat == null || lng == null) return;
-
-        await api.authPut(`/tickets/${taskId}`, {
-          status:                       'IN_PROGRESS',
-          start_time:                   new Date().toISOString(),
-          contractor_start_latitude:    lat,
-          contractor_start_longitude:   lng,
-        });
-      } catch {
-        // Non-blocking: backend may already have started this ticket on a
-        // previous attempt, or the network is flaky. Either way, the UI
-        // moves on; the next page reload will reflect server state.
-      }
-    })();
-
     const t = setTimeout(() => {
       setShowVerificationModal(false);
       setTaskStatus('in_progress');
@@ -173,19 +94,10 @@ export default function TicketDetailScreen() {
             task.locationCoords.lat,
             task.locationCoords.lng
           );
-          // Cory's stakeholder ask (3/24): "within 100 ft he wants bio
-          // authentication when arriving and leaving. He likes the
-          // simplicity of it." Tightening the start-task proximity check to
-          // 100ft as a first step. Full geofence-triggered biometric
-          // (fires automatically on arrival / leaving) is roadmapped for v2.
-          const METERS_PER_FOOT  = 0.3048;
-          const THRESHOLD_FEET   = 100;
-          const THRESHOLD_METERS = THRESHOLD_FEET * METERS_PER_FOOT; // ~30.5m
+          const METERS_PER_MILE = 1609; // ~1 mile
+          const THRESHOLD_METERS = METERS_PER_MILE;
           if (distance > THRESHOLD_METERS) {
-            const feetAway = Math.round(distance / METERS_PER_FOOT);
-            setErrorMessage(
-              `You must be within ${THRESHOLD_FEET} feet of the site. You are currently ${feetAway} feet away.`
-            );
+            setErrorMessage(`You must be within 1 mile of the site. You are currently ${Math.round(distance / METERS_PER_MILE * 10) / 10} miles away.`);
             setVerificationStep('error');
             return;
           }
@@ -216,42 +128,18 @@ export default function TicketDetailScreen() {
     setListening(false);
   });
 
-  // Build the displayed task object from real backend data when available,
-  // falling back to the demo placeholders for fields the ticket schema
-  // doesn't currently surface (point of contact, work order location).
-  // Once /tickets/<id> exposes a JOIN with work_order, locationCoords and
-  // location can come from there too.
-  const fmtDeadline = (iso: string | null | undefined) => {
-    if (!iso) return 'No deadline set';
-    try {
-      return new Date(iso).toLocaleString('en-US', {
-        month: 'long', day: 'numeric', year: 'numeric',
-        hour: 'numeric', minute: '2-digit', hour12: true,
-      });
-    } catch { return iso ?? 'No deadline set'; }
-  };
   const task = {
-    id:          ticketData?.id ?? taskId,
-    title:       ticketData ? ticketDisplayTitle(ticketData) : 'Loading task...',
-    deadline:    ticketData ? fmtDeadline(ticketData.due_date) : '',
-    // Backend schema doesn't currently surface a human-readable address.
-    // The `route` field on the ticket is a free-text description used by
-    // the dispatcher; we show it in the location slot for now and fall
-    // back to a placeholder if absent. work_order.location would be the
-    // proper source once the schema is extended.
-    location:        ticketData?.route || '1234 Main Street, San Francisco, CA 94102',
-    locationCoords:  { lat: 37.7749, lng: -122.4194 },
-    inspectionRequired: false,
-    description:     ticketData?.description || 'Loading task description...',
-    // pointOfContact is not yet a backend field on `ticket`. Placeholder
-    // keeps the UI populated; a future ticket↔auth_user POC join will
-    // replace this.
-    pointOfContact:  { name: 'John Martinez', phone: '+1 (555) 012-3456' },
-    photosRequired:  1,
-    photosMax:       5,
+    id: taskId,
+    title: 'Install Gas Pump at Station #42',
+    deadline: 'March 21, 2026 at 5:00 PM',
+    location: '1234 Main Street, San Francisco, CA 94102',
+    locationCoords: { lat: 37.7749, lng: -122.4194 },
+    inspectionRequired: false,   
+    description: 'Install new gas pump model XR-500 at station #42. Ensure proper connection to underground tank and test all safety mechanisms before completion.',
+    pointOfContact: { name: 'John Martinez', phone: '+1 (555) 012-3456' },
+    photosRequired: 1,
+    photosMax: 5,
     photosSubmitted: photoUris.length,
-    priority:        (ticketData?.priority || '').toUpperCase(),
-    serverStatus:    (ticketData?.status || '').toUpperCase(),
   };
 
   // ── TODO: Real data integration ─────────────────────────────────────────────
@@ -319,162 +207,52 @@ export default function TicketDetailScreen() {
   };
 
   const handleStartTask = () => {
-    // Reset everything so a previous failed attempt doesn't leak state into
-    // this fresh verification flow.
     setShowVerificationModal(true);
     setVerificationStep('initial');
-    setErrorMessage('');
-    setScanState('idle');
-    setPin(['', '', '', '', '', '']);
-  };
-
-  // Shared post-pick logic: append to photo state and capture a geotag
-  // alongside the URI so the upload can include lat/lng even after a long
-  // offline window.
-  const recordPhoto = async (uri: string) => {
-    setPhotoUris(prev => [...prev, uri]);
-    try {
-      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const geoTag = { lat: loc.coords.latitude, lng: loc.coords.longitude, timestamp: loc.timestamp, uri };
-      const existing = await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]';
-      const log = JSON.parse(existing);
-      log.push(geoTag);
-      await AsyncStorage.setItem(`photo_log_${task.id}`, JSON.stringify(log));
-    } catch {
-      // Non-blocking — don't prevent photo if GPS fails
-    }
-  };
-
-  // ── Inline analyze: upload eagerly if needed, then call /api/ai/analyze-photo
-  // and surface the result in a modal. Cached per-URI so a re-tap is instant.
-  const handleAnalyzePhoto = async (uri: string) => {
-    // Always pop the modal so the user gets immediate visual feedback even
-    // while the network calls run.
-    setAnalysisOpen(uri);
-    setAnalysisError(null);
-
-    // Already analyzed? Just show the cached result.
-    if (analysisByUri[uri]) return;
-
-    setAnalyzingUri(uri);
-    try {
-      // 1. Resolve the server-side photo id, uploading first if needed.
-      let photoId = photoIdByUri[uri];
-      if (!photoId) {
-        // Pull lat/lng we captured at pick-time so the analyze call sees
-        // the same metadata a "Complete Task" upload would persist.
-        let lat: number | null = null;
-        let lng: number | null = null;
-        try {
-          const log = JSON.parse(await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]');
-          const entry = log.find((g: { uri: string }) => g.uri === uri);
-          if (entry) { lat = entry.lat ?? null; lng = entry.lng ?? null; }
-        } catch { /* fall through with nulls */ }
-
-        const upload = await uploadPhotoOrEnqueue({
-          ticketId: task.id, fileUri: uri, latitude: lat, longitude: lng,
-        });
-        if (upload.status !== 'sent' || !upload.photoId) {
-          // The photo IS durably queued in SQLite, but we don't have the
-          // server id yet so we can't run analyze on it. This is usually
-          // a transient network blip rather than true offline — give the
-          // user a useful retry path rather than a flat "offline".
-          const detail = upload.status === 'queued' && upload.error
-            ? ` (${upload.error})`
-            : '';
-          setAnalysisError(
-            `Couldn't upload the photo${detail}. Tap Retry — it usually clears on the second attempt.`,
-          );
-          return;
-        }
-        photoId = upload.photoId;
-        setPhotoIdByUri(prev => ({ ...prev, [uri]: photoId! }));
-      }
-
-      // 2. Run Gemini vision via the existing analyze-photo endpoint.
-      const result = await analyzePhoto(photoId);
-      setAnalysisByUri(prev => ({ ...prev, [uri]: result }));
-    } catch (e: any) {
-      setAnalysisError(friendlyAIError(e));
-    } finally {
-      setAnalyzingUri(null);
-    }
   };
 
   const handleTakePhoto = async () => {
     if (photoUris.length >= task.photosMax) return;
-    try {
-      // Explicitly request camera permission before launching. Without this
-      // the picker silently fails on iOS / Android when the OS-level
-      // permission is denied — which made the button feel like a no-op.
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Camera permission needed',
-          'Field Force needs camera access to capture job site photos. Enable it in Settings.',
-        );
-        return;
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets[0]?.uri) {
+      const uri = result.assets[0].uri;
+      setPhotoUris(prev => [...prev, uri]);
+      try {
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const geoTag = { lat: loc.coords.latitude, lng: loc.coords.longitude, timestamp: loc.timestamp, uri };
+        const existing = await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]';
+        const log = JSON.parse(existing);
+        log.push(geoTag);
+        await AsyncStorage.setItem(`photo_log_${task.id}`, JSON.stringify(log));
+      } catch {
+        // Non-blocking — don't prevent photo if GPS fails
       }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality:    0.7,
-      });
-      if (!result.canceled && result.assets[0]?.uri) {
-        await recordPhoto(result.assets[0].uri);
-      }
-    } catch (err: any) {
-      Alert.alert('Camera error', err?.message ?? 'Could not open the camera.');
     }
   };
 
   const handleUploadPhoto = async () => {
     if (photoUris.length >= task.photosMax) return;
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert(
-          'Photo library permission needed',
-          'Field Force needs photo library access to attach existing photos. Enable it in Settings.',
-        );
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        quality:    0.7,
-      });
-      if (!result.canceled && result.assets[0]?.uri) {
-        await recordPhoto(result.assets[0].uri);
-      }
-    } catch (err: any) {
-      Alert.alert('Photo library error', err?.message ?? 'Could not open the photo library.');
-    }
-  };
-
-  const uploadPhotos = async (
-    ticketId: string | number,
-    uris: string[],
-  ): Promise<{ sent: number; queued: number }> => {
-    if (uris.length === 0) return { sent: 0, queued: 0 };
-    let sent = 0, queued = 0;
-    for (const uri of uris) {
-      // Pull the geotag we captured at photo-pick time so the upload can
-      // include lat/lng even after a long offline window.
-      let lat: number | null = null, lng: number | null = null;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.7,
+    });
+    if (!result.canceled && result.assets[0]?.uri) {
+      const uri = result.assets[0].uri;
+      setPhotoUris(prev => [...prev, uri]);
       try {
-        const log = JSON.parse(await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]');
-        const entry = log.find((g: { uri: string }) => g.uri === uri);
-        if (entry) { lat = entry.lat ?? null; lng = entry.lng ?? null; }
-      } catch { /* fall through with null lat/lng */ }
-
-      const result = await uploadPhotoOrEnqueue({
-        ticketId,
-        fileUri: uri,
-        latitude:  lat,
-        longitude: lng,
-      });
-      if (result.status === 'sent') sent += 1; else queued += 1;
+        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        const geoTag = { lat: loc.coords.latitude, lng: loc.coords.longitude, timestamp: loc.timestamp, uri };
+        const existing = await AsyncStorage.getItem(`photo_log_${task.id}`) ?? '[]';
+        const log = JSON.parse(existing);
+        log.push(geoTag);
+        await AsyncStorage.setItem(`photo_log_${task.id}`, JSON.stringify(log));
+      } catch {
+        // Non-blocking — don't prevent photo if GPS fails
+      }
     }
-    return { sent, queued };
   };
 
   const handleCompleteTask = async () => {
@@ -490,20 +268,20 @@ export default function TicketDetailScreen() {
         // Non-blocking — submit without end location if GPS fails
       }
 
-      // Backend schema: status enum is uppercase, lat/lng are separate
-      // numeric fields. The route requires end_time + end lat/lng when
-      // transitioning to PENDING_APPROVAL. start_time + start lat/lng
-      // were already persisted on Start Task; no need to resend.
-      const payload: Record<string, unknown> = {
-        status:    'PENDING_APPROVAL',
+      await api.authPut(`/tickets/${taskId}`, {
+        status: 'completed',
         notes,
-        end_time:  new Date().toISOString(),
-      };
-      if (endCoords) {
-        payload.contractor_end_latitude  = endCoords.latitude;
-        payload.contractor_end_longitude = endCoords.longitude;
-      }
-      await api.authPut(`/tickets/${taskId}`, payload);
+        start_time: acceptLoc?.timestamp
+          ? new Date(acceptLoc.timestamp).toISOString()
+          : undefined,
+        contractor_start_location: acceptLoc?.coords
+          ? `${acceptLoc.coords.latitude},${acceptLoc.coords.longitude}`
+          : undefined,
+        end_time: new Date().toISOString(),
+        contractor_end_location: endCoords
+          ? `${endCoords.latitude},${endCoords.longitude}`
+          : undefined,
+      });
 
       await AsyncStorage.removeItem(notesKey(taskId));
       await AsyncStorage.removeItem(acceptLocationKey(taskId));
@@ -511,29 +289,7 @@ export default function TicketDetailScreen() {
       // TODO: queue for offline retry when sync manager is built
     }
 
-    if (photoUris.length > 0) {
-      const { sent, queued } = await uploadPhotos(task.id, photoUris);
-      if (queued > 0) {
-        Alert.alert(
-          'Photos queued',
-          `${sent} uploaded, ${queued} saved offline. They'll send automatically when you're back online.`,
-        );
-      }
-    }
-
-    // No dedicated TaskConfirmation screen exists in the navigator yet, so
-    // bounce the user back to the Tickets list. The list re-fetches on focus
-    // and the just-completed ticket will surface in the Pending Approval
-    // group.
-    Alert.alert(
-      'Submitted for approval',
-      'Your task has been sent to your supervisor for review.',
-      [{ text: 'OK', onPress: () => navigation.navigate('Tickets' as never) }],
-    );
-  };
-
-  const handleRemovePhoto = (index: number) => {
-    setPhotoUris(prev => prev.filter((_, i) => i !== index));
+    navigation.navigate('TaskConfirmation' as never, { taskId } as never);
   };
 
   const closeModal = () => {
@@ -544,72 +300,23 @@ export default function TicketDetailScreen() {
     setScanState('idle');
   };
 
-  // Helper that switches the verification modal to the error step with a
-  // specific message. Centralised so we always set the message BEFORE the
-  // step (avoiding a render frame where the error UI shows but the message
-  // hasn't landed yet).
-  const showVerificationError = (message: string) => {
-    setErrorMessage(message);
-    setScanState('idle');
-    setVerificationStep('error');
-  };
-
-  const handleBiometricAuth = async () => {
+  const handleBiometricAuth = () => {
     if (scanState === 'scanning') return;
     setScanState('scanning');
+    setErrorMessage('');
 
-    try {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const enrolled    = await LocalAuthentication.isEnrolledAsync();
-
-      if (!hasHardware) {
-        showVerificationError('This device has no biometric hardware. Please use PIN.');
-        return;
-      }
-      if (!enrolled) {
-        showVerificationError('No fingerprint or face is enrolled on this device. Please use PIN.');
-        return;
-      }
-
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage:         'Verify identity to start task',
-        cancelLabel:           'Cancel',
-        disableDeviceFallback: false,
-      });
-
-      if (result.success) {
-        setScanState('idle');
-        setVerificationStep('location');
-        return;
-      }
-
-      // expo-local-authentication returns an error code we can use to give
-      // the user a more specific reason for the failure.
-      const code = (result as any)?.error as string | undefined;
-      if (code === 'user_cancel' || code === 'app_cancel' || code === 'system_cancel') {
-        showVerificationError('Scan cancelled. Try again or use PIN.');
-      } else if (code === 'lockout' || code === 'lockout_permanent') {
-        showVerificationError('Too many failed attempts. Use your PIN to continue.');
-      } else if (code === 'not_enrolled') {
-        showVerificationError('No fingerprint or face is enrolled on this device. Please use PIN.');
-      } else {
-        showVerificationError('Biometric scan failed. Try again or use PIN.');
-      }
-    } catch (err: any) {
-      showVerificationError(err?.message ?? 'Biometric scan failed. Try again or use PIN.');
-    }
+    setTimeout(() => {
+      setVerificationStep('location');
+    }, 1500);
   };
 
-  const handlePinAuth = async () => {
+  const handlePinAuth = () => {
     const pinString = pin.join('');
     if (pinString.length !== 6) {
       setErrorMessage('Please enter a complete 6-digit PIN');
       return;
     }
-    // Source of truth lives in secureStorage.verifyOfflinePin so the
-    // OfflineLogin screen and this in-task verification stay in sync.
-    const ok = await verifyOfflinePin(pinString);
-    if (!ok) {
+    if (pinString !== '123456') {
       setVerificationStep('error');
       setErrorMessage('Invalid PIN. Please try again.');
       setPin(['', '', '', '', '', '']);
@@ -645,7 +352,7 @@ export default function TicketDetailScreen() {
   };
 
   return (
-    <MainFrame header='home' onRefresh={fetchTicketData}>
+    <MainFrame header='home'>
 
       {/* ── Task Title + Status ── */}
       <View style={styles.section}>
@@ -755,51 +462,18 @@ export default function TicketDetailScreen() {
             <Text style={styles.photoCount}>{photoUris.length}/{task.photosRequired}</Text>
           </View>
           <View style={styles.photoRow}>
-            {photoUris.map((uri, i) => {
-              const analyzed = !!analysisByUri[uri];
-              const busy     = analyzingUri === uri;
-              return (
-                <View key={`p-${i}`} style={[styles.photoSlot, styles.photoSlotDone]}>
-                  <Image source={{ uri }} style={styles.photoPreview} />
-                  <TouchableOpacity
-                    style={styles.photoRemoveBtn}
-                    onPress={() => handleRemovePhoto(i)}
-                    hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                  >
-                    <Ionicons name="close-circle" size={18} color="#ef4444" />
-                  </TouchableOpacity>
-                  {/* Inline analyze pill — runs Gemini vision on the photo
-                      without waiting for Complete Task to upload it. */}
-                  <TouchableOpacity
-                    style={[styles.analyzePill, analyzed && styles.analyzePillDone]}
-                    onPress={() => handleAnalyzePhoto(uri)}
-                    disabled={busy}
-                    activeOpacity={0.8}
-                  >
-                    {busy ? (
-                      <ActivityIndicator size="small" color="#a78bfa" />
-                    ) : (
-                      <>
-                        <Ionicons
-                          name={analyzed ? 'checkmark-circle' : 'sparkles'}
-                          size={12}
-                          color={analyzed ? '#34d399' : '#a78bfa'}
-                        />
-                        <Text style={[styles.analyzePillText, analyzed && { color: '#34d399' }]}>
-                          {analyzed ? 'Analyzed' : 'Analyze'}
-                        </Text>
-                      </>
-                    )}
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
-            {photoUris.length < task.photosRequired &&
-              [...Array(task.photosRequired - photoUris.length)].map((_, i) => (
-                <View key={`empty-${i}`} style={styles.photoSlot}>
-                  <Ionicons name="camera" size={24} color="#6b7280" />
-                </View>
-              ))}
+            {[...Array(task.photosRequired)].map((_, i) => (
+              <View
+                key={i}
+                style={[styles.photoSlot, i < photoUris.length && styles.photoSlotDone]}
+              >
+                <Ionicons
+                  name={i < photoUris.length ? 'checkmark-circle' : 'camera'}
+                  size={24}
+                  color={i < photoUris.length ? '#22c55e' : '#6b7280'}
+                />
+              </View>
+            ))}
           </View>
             {photoUris.length < task.photosMax && (
               <View style={styles.photoActions}>
@@ -966,157 +640,14 @@ export default function TicketDetailScreen() {
               <View style={styles.modalBody}>
                 <Text style={styles.modalText}>Verification failed.</Text>
                 <Ionicons name="alert-circle" size={48} color="#ef4444" style={styles.modalIcon} />
-                <Text style={styles.errorText}>
-                  {errorMessage || 'Please try again or use your PIN.'}
-                </Text>
-                <TouchableOpacity
-                  style={styles.btnPrimary}
-                  onPress={() => {
-                    // Send the user back to the biometric scan UI for another
-                    // try without closing the modal.
-                    setErrorMessage('');
-                    setScanState('idle');
-                    setVerificationStep('initial');
-                  }}
-                >
-                  <Ionicons name="refresh" size={20} color="white" />
-                  <Text style={styles.btnText}>Try Again</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.pinLink}
-                  onPress={() => {
-                    setErrorMessage('');
-                    setScanState('idle');
-                    setVerificationStep('pin');
-                  }}
-                >
-                  <Ionicons name="keypad-outline" size={16} color="#ff8c00" />
-                  <Text style={styles.pinLinkText}>Use PIN instead</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={closeModal}>
-                  <Text style={styles.backLink}>Cancel</Text>
+                {errorMessage !== '' && <Text style={styles.errorText}>{errorMessage}</Text>}
+                <TouchableOpacity style={styles.btnPrimary} onPress={closeModal}>
+                  <Ionicons name="close" size={20} color="white" />
+                  <Text style={styles.btnText}>Close</Text>
                 </TouchableOpacity>
               </View>
             )}
 
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── Inline AI photo analysis modal ─────────────────────────────────
-          Pops when the user taps the Analyze pill on a photo. Shows the
-          uploading / analyzing spinner while we round-trip to the backend,
-          then renders the structured PhotoAnalysis (severity, summary,
-          concerns, recommendations). Cached per URI so re-tapping is
-          instant and doesn't re-call Gemini. */}
-      <Modal
-        visible={analysisOpen !== null}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAnalysisOpen(null)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.analysisModal}>
-            <View style={styles.analysisHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Ionicons name="sparkles" size={16} color="#a78bfa" />
-                <Text style={styles.analysisTitle}>AI Photo Review</Text>
-              </View>
-              <TouchableOpacity
-                onPress={() => setAnalysisOpen(null)}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="close" size={22} color="#9ca3af" />
-              </TouchableOpacity>
-            </View>
-
-            {analysisOpen && analyzingUri === analysisOpen && (
-              <View style={styles.analysisLoading}>
-                <ActivityIndicator size="large" color="#a78bfa" />
-                <Text style={styles.analysisLoadingText}>
-                  {photoIdByUri[analysisOpen] ? 'Analyzing photo…' : 'Uploading + analyzing…'}
-                </Text>
-                <Text style={styles.analysisLoadingHint}>
-                  This usually takes 5–15 seconds. The free-tier server can take longer
-                  on the first call after idle.
-                </Text>
-              </View>
-            )}
-
-            {analysisOpen && analyzingUri !== analysisOpen && analysisError && (
-              <View style={styles.analysisError}>
-                <Ionicons name="alert-circle" size={32} color="#ef4444" />
-                <Text style={styles.analysisErrorText}>{analysisError}</Text>
-                <View style={styles.analysisErrorActions}>
-                  <TouchableOpacity
-                    style={styles.analysisRetryBtn}
-                    onPress={() => analysisOpen && handleAnalyzePhoto(analysisOpen)}
-                    activeOpacity={0.85}
-                  >
-                    <Ionicons name="refresh" size={18} color="white" />
-                    <Text style={styles.analysisRetryBtnText}>Retry</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.analysisCloseBtn}
-                    onPress={() => setAnalysisOpen(null)}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={styles.analysisCloseBtnText}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            )}
-
-            {analysisOpen && analyzingUri !== analysisOpen && !analysisError && analysisByUri[analysisOpen] && (
-              <View style={{ gap: 12 }}>
-                {(() => {
-                  const a = analysisByUri[analysisOpen];
-                  const sev = a.severity;
-                  const sevColor =
-                    sev === 'high'   ? '#ef4444' :
-                    sev === 'medium' ? '#f59e0b' :
-                    sev === 'low'    ? '#facc15' : '#34d399';
-                  const sevBg =
-                    sev === 'high'   ? 'rgba(239,68,68,0.12)' :
-                    sev === 'medium' ? 'rgba(245,158,11,0.12)' :
-                    sev === 'low'    ? 'rgba(250,204,21,0.12)' : 'rgba(52,211,153,0.12)';
-                  return (
-                    <>
-                      <View style={[styles.severityPill, { backgroundColor: sevBg, borderColor: sevColor }]}>
-                        <Text style={[styles.severityPillText, { color: sevColor }]}>
-                          {sev === 'none' ? 'NO ISSUES' : `${sev.toUpperCase()} SEVERITY`}
-                        </Text>
-                      </View>
-                      <Text style={styles.analysisSummary}>{a.summary}</Text>
-
-                      {a.concerns.length > 0 && (
-                        <View>
-                          <Text style={styles.analysisSectionTitle}>Concerns</Text>
-                          {a.concerns.map((c, idx) => (
-                            <View key={`c-${idx}`} style={styles.analysisBullet}>
-                              <Ionicons name="warning" size={14} color="#f59e0b" />
-                              <Text style={styles.analysisBulletText}>{c}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-
-                      {a.recommendations.length > 0 && (
-                        <View>
-                          <Text style={styles.analysisSectionTitle}>Recommendations</Text>
-                          {a.recommendations.map((r, idx) => (
-                            <View key={`r-${idx}`} style={styles.analysisBullet}>
-                              <Ionicons name="checkmark-circle" size={14} color="#34d399" />
-                              <Text style={styles.analysisBulletText}>{r}</Text>
-                            </View>
-                          ))}
-                        </View>
-                      )}
-                    </>
-                  );
-                })()}
-              </View>
-            )}
           </View>
         </View>
       </Modal>
@@ -1197,169 +728,7 @@ const styles = StyleSheet.create({
     borderStyle: 'dashed', borderColor: BORDER,
     alignItems: 'center', justifyContent: 'center',
   },
-  photoSlotDone: { borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)', borderStyle: 'solid', overflow: 'hidden' },
-  photoPreview: { width: '100%', height: '100%', borderRadius: 6 },
-  photoRemoveBtn: {
-    position: 'absolute', top: 2, right: 2,
-    backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 10,
-  },
-
-  analyzePill: {
-    position:        'absolute',
-    bottom:          4,
-    left:            4,
-    right:           4,
-    flexDirection:   'row',
-    alignItems:      'center',
-    justifyContent:  'center',
-    gap:             4,
-    paddingVertical: 4,
-    borderRadius:    8,
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    borderWidth:     1,
-    borderColor:     'rgba(167,139,250,0.4)',
-    minHeight:       22,
-  },
-  analyzePillDone: {
-    borderColor: 'rgba(52,211,153,0.5)',
-  },
-  analyzePillText: {
-    fontFamily: 'poppins-bold',
-    fontSize:   10,
-    color:      '#a78bfa',
-    letterSpacing: 0.3,
-  },
-
-  // ── Inline analysis modal ────────────────────────────────────────────────
-  analysisModal: {
-    width:           '92%',
-    maxHeight:       '85%',
-    backgroundColor: '#0f172a',
-    borderWidth:     1,
-    borderColor:     'rgba(167,139,250,0.25)',
-    borderRadius:    16,
-    padding:         18,
-    gap:             14,
-  },
-  analysisHeader: {
-    flexDirection:  'row',
-    alignItems:     'center',
-    justifyContent: 'space-between',
-  },
-  analysisTitle: {
-    fontFamily:    'poppins-bold',
-    fontSize:      14,
-    color:         '#ffffff',
-    letterSpacing: 0.3,
-  },
-  analysisLoading: { alignItems: 'center', gap: 10, paddingVertical: 24 },
-  analysisLoadingText: {
-    fontFamily: 'poppins-bold',
-    fontSize:   13,
-    color:      '#ffffff',
-  },
-  analysisLoadingHint: {
-    fontFamily: 'poppins-regular',
-    fontSize:   11,
-    color:      'rgba(255,255,255,0.55)',
-    textAlign:  'center',
-    paddingHorizontal: 12,
-    lineHeight: 16,
-  },
-  analysisError: {
-    alignItems:        'center',
-    gap:               14,
-    paddingVertical:   18,
-    paddingHorizontal: 4,
-  },
-  analysisErrorText: {
-    fontFamily: 'poppins-regular',
-    fontSize:   13,
-    color:      '#ef4444',
-    textAlign:  'center',
-    lineHeight: 18,
-  },
-  analysisErrorActions: {
-    flexDirection: 'row',
-    alignSelf:     'stretch',
-    gap:           10,
-    marginTop:     4,
-  },
-  // Primary retry — fills the row with bold orange so it reads as the
-  // recommended action even at a glance. Match the Ticket-Detail
-  // primary-button language (16pt vertical padding, rounded 12).
-  analysisRetryBtn: {
-    flex:            2,
-    flexDirection:   'row',
-    alignItems:      'center',
-    justifyContent:  'center',
-    gap:             8,
-    backgroundColor: '#ff8c00',
-    borderRadius:    12,
-    paddingVertical: 14,
-  },
-  analysisRetryBtnText: {
-    fontFamily:    'poppins-bold',
-    fontSize:      14,
-    color:         '#ffffff',
-    letterSpacing: 0.3,
-  },
-  // Secondary close — quieter outline so it sits next to Retry without
-  // competing for attention.
-  analysisCloseBtn: {
-    flex:            1,
-    alignItems:      'center',
-    justifyContent:  'center',
-    backgroundColor: 'rgba(255,255,255,0.04)',
-    borderWidth:     1,
-    borderColor:     'rgba(255,255,255,0.15)',
-    borderRadius:    12,
-    paddingVertical: 14,
-  },
-  analysisCloseBtnText: {
-    fontFamily: 'poppins-bold',
-    fontSize:   13,
-    color:      'rgba(255,255,255,0.75)',
-  },
-  severityPill: {
-    alignSelf:         'flex-start',
-    paddingVertical:   4,
-    paddingHorizontal: 10,
-    borderRadius:      999,
-    borderWidth:       1,
-  },
-  severityPillText: {
-    fontFamily:    'poppins-bold',
-    fontSize:      10,
-    letterSpacing: 0.6,
-  },
-  analysisSummary: {
-    fontFamily: 'poppins-regular',
-    fontSize:   13,
-    color:      'rgba(255,255,255,0.85)',
-    lineHeight: 19,
-  },
-  analysisSectionTitle: {
-    fontFamily:    'poppins-bold',
-    fontSize:      11,
-    color:         '#a78bfa',
-    letterSpacing: 0.6,
-    textTransform: 'uppercase',
-    marginBottom:  6,
-  },
-  analysisBullet: {
-    flexDirection:  'row',
-    alignItems:     'flex-start',
-    gap:            8,
-    marginBottom:   6,
-  },
-  analysisBulletText: {
-    flex:       1,
-    fontFamily: 'poppins-regular',
-    fontSize:   12,
-    color:      'rgba(255,255,255,0.85)',
-    lineHeight: 17,
-  },
+  photoSlotDone: { borderColor: '#22c55e', backgroundColor: 'rgba(34,197,94,0.1)' },
 
   actions: { width: '90%', gap: 10, marginBottom: 32 },
   btnPrimary: {

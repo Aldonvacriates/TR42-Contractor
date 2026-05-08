@@ -41,37 +41,20 @@ from . import analytics_bp
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _resolve_contractor_id():
-    """Return (contractor_id, error_response).
-
-    The token gives us `request.user_id` which is the auth_user.id. Tickets,
-    notifications, and contractor_performance rows all reference contractor.id
-    (a separate UUID), not auth_user.id, so we look up the contractor row via
-    its `user_id` FK first and return that row's id.
+    """Return (contractor_id, error_response). Default to token owner.
 
     Vendors can pass ?contractor_id=<id> to read another contractor's stats.
     Contractors can only read their own.
     """
-    # Look up the caller's own contractor.id (separate UUID from auth_user.id)
-    own_row = db.session.execute(
-        text("SELECT id FROM contractor WHERE user_id = :uid LIMIT 1"),
-        {'uid': request.user_id},
-    ).first()
-    if not own_row:
-        return None, (
-            jsonify({'error': 'No contractor record associated with this account'}),
-            403,
-        )
-    own_contractor_id = own_row[0]
-
     raw = (request.args.get('contractor_id') or '').strip()
     if not raw:
-        return own_contractor_id, None
+        return request.user_id, None
 
     role = (getattr(request, 'user_role', '') or '').lower()
     if role == 'vendor':
         return raw, None
 
-    if raw != own_contractor_id:
+    if raw != request.user_id:
         return None, (
             jsonify({'error': 'Forbidden: you may only access your own analytics'}),
             403,
@@ -363,7 +346,7 @@ def get_contractor_profile():
             c.years_experience,
             c.created_at
         FROM contractor c
-        JOIN auth_user au ON au.id = c.user_id
+        JOIN auth_user au ON au.id = c.id
         WHERE c.id = :cid
         """,
         params,
@@ -429,22 +412,20 @@ def get_contractor_profile():
 @analytics_bp.route('/notifications', methods=['GET'])
 @token_required
 def get_notifications():
-    """Recent notifications addressed to this user.
+    """Recent notifications addressed to this user."""
+    contractor_id, err = _resolve_contractor_id()
+    if err:
+        return err
 
-    `notification.recipient` stores `auth_user.id`, not `contractor.id`, so
-    this endpoint matches against `request.user_id` directly without going
-    through the contractor lookup. Verified against the live DB: 100% of
-    rows match auth_user.id, 0% match contractor.id.
-    """
     rows, qerr = _execute_query(
         """
         SELECT id, message, level, created_at
         FROM notification
-        WHERE recipient = :uid
+        WHERE recipient = :cid
         ORDER BY created_at DESC
         LIMIT 20
         """,
-        {'uid': request.user_id},
+        {'cid': contractor_id},
     )
     if qerr:
         return jsonify({'error': f'notifications query failed: {qerr}'}), 500

@@ -45,7 +45,7 @@ class InspectionSchema(ma.SQLAlchemyAutoSchema):
 
 class ItemResultInputSchema(Schema):
     """One item result inside a submission."""
-    item_id = fields.Str(required=True)
+    item_id = fields.Int(required=True)
     passed = fields.Bool(required=True)
     note = fields.Str(required=False, load_default=None)
 
@@ -59,7 +59,7 @@ class InspectionSubmitSchema(Schema):
                               still see who bypassed the inspection.
     - Otherwise             → per-item results[] must be provided.
     """
-    template_id = fields.Str(required=True)
+    template_id = fields.Int(required=True)
     no_issues_found = fields.Bool(required=False, load_default=False)
     skipped = fields.Bool(required=False, load_default=False)
     results = fields.List(fields.Nested(ItemResultInputSchema), required=False, load_default=[])

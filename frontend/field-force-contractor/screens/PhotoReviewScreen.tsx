@@ -159,19 +159,7 @@ export const PhotoReviewScreen: FC = () => {
         setPhotoError(null)
         setAnalyses({}) // analyses are per-ticket; reset on ticket change
         listTicketPhotos(selectedTicketId)
-            .then(ps => {
-                if (cancelled) return
-                setPhotos(ps)
-                // Pre-populate the in-memory analyses cache with whatever the
-                // backend already has saved on each photo. Lets the screen
-                // render the previous severity / concerns instantly when the
-                // user reopens an already-analyzed photo, no Gemini call.
-                const seeded: Record<string, PhotoAnalysis> = {}
-                for (const p of ps) {
-                    if (p.ai_analysis) seeded[p.id] = p.ai_analysis
-                }
-                if (Object.keys(seeded).length) setAnalyses(seeded)
-            })
+            .then(ps => { if (!cancelled) setPhotos(ps) })
             .catch(e  => { if (!cancelled) setPhotoError(friendlyAIError(e)) })
             .finally(() => { if (!cancelled) setLoadingPhotos(false) })
         return () => { cancelled = true }

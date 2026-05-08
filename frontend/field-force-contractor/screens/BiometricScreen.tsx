@@ -17,9 +17,9 @@
 // the user is never considered authenticated until their identity is verified.
 // ──────────────────────────────────────────────────────────────────────────────
 //
-// Uses expo-local-authentication for real Face ID / Fingerprint scans.
-// On a simulator without enrolled biometrics the scan will fail — use
-// "Use PIN instead" to fall through to the offline login path.
+// DEV MODE = true  → scan always succeeds. Tap "Force Fail (Dev)" to test
+//                    the failure path.
+// DEV MODE = false → uses real expo-local-authentication.
 
 import { useState, useEffect } from 'react';
 import {
@@ -29,10 +29,8 @@ import {
   StyleSheet,
   StatusBar,
   ActivityIndicator,
-  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as LocalAuthentication from 'expo-local-authentication';
 import { Ionicons }  from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp }          from '@react-navigation/native-stack';
@@ -46,7 +44,8 @@ import { colors, spacing, radius, fontSize, fonts } from '../constants/theme';
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'BiometricCheck'>;
 type Route = RouteProp<RootStackParamList, 'BiometricCheck'>;
 
-const AMBER = '#f59e0b';
+const DEV_MODE = true;
+const AMBER    = '#f59e0b';
 
 export default function BiometricScreen() {
   const navigation           = useNavigation<Nav>();
@@ -91,29 +90,19 @@ export default function BiometricScreen() {
     if (scanState === 'scanning') return;
     setScanState('scanning');
 
-    try {
-      // Verify the device actually has biometric hardware and an enrolled
-      // credential (face / fingerprint). Without this expo-local-authentication
-      // will silently fall back to passcode on some devices, which defeats the
-      // purpose of an identity check.
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const enrolled    = await LocalAuthentication.isEnrolledAsync();
-
-      if (!hasHardware || !enrolled) {
-        setScanState('failed');
-        return;
+    setTimeout(async () => {
+      if (DEV_MODE) {
+        await login(pendingToken, pendingUser);
+        if (onSuccess) {
+          go(onSuccess);
+        } else {
+          navigation.replace('Dashboard');
+        }
+        return; // ← stop here, don't fall through to the real scan logic below
       }
 
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage:         selectedMethod === 'face'
-          ? 'Scan your face to continue'
-          : 'Scan your fingerprint to continue',
-        cancelLabel:           'Cancel',
-        disableDeviceFallback: false,
-        fallbackLabel:         Platform.OS === 'ios' ? 'Use PIN' : '',
-      });
-
-      if (result.success) {
+      const scanWorked = Math.random() > 0.3;
+      if (scanWorked) {
         await login(pendingToken, pendingUser);
         if (onSuccess) {
           go(onSuccess);
@@ -123,11 +112,10 @@ export default function BiometricScreen() {
       } else {
         setScanState('failed');
       }
-    } catch {
-      setScanState('failed');
-    }
+    }, 1500);
   };
 
+  const handleForceFail = () => setScanState('failed');
   const handleUsePIN = () => navigation.replace('OfflineLogin', { pendingToken, pendingUser });
 
   const getScanIcon      = () => selectedMethod === 'face' ? 'scan' : 'finger-print';
@@ -223,10 +211,13 @@ export default function BiometricScreen() {
           <Text style={styles.hintText}>Scanning…</Text>
         )}
 
-        {/* "Force Fail" dev button removed for showcase. The DEV_MODE flag
-            still controls whether biometric scans auto-succeed — only the
-            visible test button is gone. Restore from git if you need it
-            during local dev. */}
+        {/* DEV: Force Fail — remove entire block before production */}
+        {DEV_MODE && scanState === 'idle' && (
+          <TouchableOpacity style={styles.devFailBtn} onPress={handleForceFail} activeOpacity={0.8}>
+            <Ionicons name="construct-outline" size={14} color={colors.warning} />
+            <Text style={styles.devFailText}>Force Fail (Dev)</Text>
+          </TouchableOpacity>
+        )}
 
         {/* Failed state — retry + PIN fallback */}
         {scanState === 'failed' && (

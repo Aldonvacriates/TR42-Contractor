@@ -17,9 +17,7 @@
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Allow $(PRODUCT_NAME) to use speech recognition.",
         "NSMicrophoneUsageDescription": "Allow $(PRODUCT_NAME) to use the microphone.",
-        "NSLocationWhenInUseUsageDescription": "Field Force needs your location to verify job site arrival and departure.",
-        "NSCameraUsageDescription": "Field Force needs camera access to capture job site photos for ticket verification.",
-        "NSPhotoLibraryUsageDescription": "Field Force needs photo library access to attach existing photos to tickets."
+        "NSLocationWhenInUseUsageDescription": "Field Force needs your location to verify job site arrival and departure."
       }
     },
     "android": {
@@ -35,9 +33,7 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "android.permission.RECORD_AUDIO",
-        "android.permission.ACCESS_FINE_LOCATION",
-        "android.permission.CAMERA",
-        "android.permission.READ_MEDIA_IMAGES"
+        "android.permission.ACCESS_FINE_LOCATION"
       ]
     },
     "web": {
@@ -55,14 +51,7 @@
       "expo-font",
       "expo-secure-store",
       "expo-location",
-      "expo-web-browser",
-      [
-        "expo-image-picker",
-        {
-          "photosPermission": "Field Force needs photo library access to attach existing photos to tickets.",
-          "cameraPermission": "Field Force needs camera access to capture job site photos for ticket verification."
-        }
-      ]
+      "expo-web-browser"
     ],
     "experiments": {
       "reactCompiler": true
