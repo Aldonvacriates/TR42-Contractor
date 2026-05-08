@@ -1,6 +1,8 @@
 // SavedReportsScreen.tsx
-// Shows all AI-generated inspection reports saved by the contractor.
-// Calls GET /api/ai/reports — endpoint is live on the backend.
+// Shows all AI-generated artefacts saved by the contractor — inspection
+// reports (GET /api/ai/reports) and Field Assistant conversations
+// (GET /api/ai/chats). Two tabs at the top let the user switch between
+// the two lists; both flows save through the same backend pattern.
 
 import { FC, useCallback, useState } from 'react'
 import {
@@ -16,7 +18,10 @@ import {
 import { Ionicons } from '@expo/vector-icons'
 import { useFocusEffect } from '@react-navigation/native'
 import { MainFrame } from '@/components/MainFrame'
+import { MarkdownView } from '@/components/MarkdownView'
 import { api } from '@/utils/api'
+import { listChats, SavedChat } from '@/utils/aiClient'
+import { exportChatPdf, exportReportPdf } from '@/utils/pdfExport'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -114,55 +119,224 @@ const ReportCard: FC<{ report: SavedReport }> = ({ report }) => {
             )}
 
             {/* ── Footer ── */}
-            <Text style={s.dateText}>{formatDate(report.created_at)}</Text>
+            <View style={s.cardFooterRow}>
+                <Text style={s.dateText}>{formatDate(report.created_at)}</Text>
+                <TouchableOpacity
+                    style={s.pdfBtn}
+                    // Stop the toggle-expand from firing when the PDF
+                    // button is tapped — the contractor wanted a quick
+                    // export, not to collapse the report.
+                    onPress={(e) => {
+                        e.stopPropagation?.()
+                        exportReportPdf({
+                            title:               report.title,
+                            priority:            report.priority,
+                            category:            report.category,
+                            description:         report.description,
+                            recommended_actions: report.recommended_actions,
+                            raw_notes:           report.raw_notes,
+                            created_at:          report.created_at,
+                        }).catch(() => {})
+                    }}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="document-text-outline" size={12} color="#a78bfa" />
+                    <Text style={s.pdfBtnText}>Export PDF</Text>
+                </TouchableOpacity>
+            </View>
+        </TouchableOpacity>
+    )
+}
+
+// ─── Chat card ────────────────────────────────────────────────────────────────
+
+const ChatCard: FC<{ chat: SavedChat }> = ({ chat }) => {
+    // Default expanded so the contractor lands on the full transcript
+    // without an extra tap, matching ReportCard behaviour.
+    const [expanded, setExpanded] = useState(true)
+    const userTurns      = chat.messages.filter(m => m.role === 'user').length
+    const assistantTurns = chat.messages.filter(m => m.role === 'assistant').length
+
+    return (
+        <TouchableOpacity
+            style={s.card}
+            onPress={() => setExpanded(e => !e)}
+            activeOpacity={0.8}
+        >
+            <View style={s.cardHeader}>
+                <View style={{ flex: 1, gap: 6 }}>
+                    <Text style={s.cardTitle}>{chat.title}</Text>
+                    <View style={s.cardMeta}>
+                        <View style={[s.badge, { backgroundColor: 'rgba(167,139,250,0.12)', borderColor: 'rgba(167,139,250,0.3)' }]}>
+                            <Text style={[s.badgeText, { color: '#a78bfa' }]} numberOfLines={1}>
+                                💬 CHAT
+                            </Text>
+                        </View>
+                        <View style={s.categoryPill}>
+                            <Text style={s.categoryText} numberOfLines={1}>
+                                {userTurns} q · {assistantTurns} a
+                            </Text>
+                        </View>
+                    </View>
+                </View>
+                <Ionicons
+                    name={expanded ? 'chevron-up' : 'chevron-down'}
+                    size={16}
+                    color="rgba(255,255,255,0.3)"
+                    style={{ marginLeft: 8, marginTop: 2 }}
+                />
+            </View>
+
+            {expanded && (
+                <View style={s.cardBody}>
+                    <View style={s.divider} />
+                    {chat.summary && (
+                        <>
+                            <Text style={s.sectionLabel}>Summary</Text>
+                            <Text style={s.bodyText}>{chat.summary}</Text>
+                        </>
+                    )}
+                    <Text style={[s.sectionLabel, { marginTop: chat.summary ? 12 : 0 }]}>Transcript</Text>
+                    {chat.messages.map((m, i) => (
+                        <View key={i} style={{ marginBottom: 8 }}>
+                            <Text style={s.transcriptRole}>
+                                {m.role === 'user' ? 'You' : 'Assistant'}
+                                {m.timestamp ? ` · ${m.timestamp}` : ''}
+                            </Text>
+                            {m.role === 'assistant' ? (
+                                // Render assistant replies as markdown so the
+                                // formatting the model emitted in the chat
+                                // (bold, lists, headings, code) survives
+                                // into the saved transcript.
+                                <MarkdownView>{m.content}</MarkdownView>
+                            ) : (
+                                <Text style={s.bodyText}>{m.content}</Text>
+                            )}
+                        </View>
+                    ))}
+                </View>
+            )}
+
+            <View style={s.cardFooterRow}>
+                <Text style={s.dateText}>{formatDate(chat.created_at)}</Text>
+                <TouchableOpacity
+                    style={s.pdfBtn}
+                    onPress={(e) => {
+                        e.stopPropagation?.()
+                        exportChatPdf({
+                            title:    chat.title,
+                            summary:  chat.summary,
+                            messages: chat.messages,
+                        }).catch(() => {})
+                    }}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="document-text-outline" size={12} color="#a78bfa" />
+                    <Text style={s.pdfBtnText}>Export PDF</Text>
+                </TouchableOpacity>
+            </View>
         </TouchableOpacity>
     )
 }
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-const EmptyState: FC = () => (
+const EmptyState: FC<{ tab: 'reports' | 'chats' }> = ({ tab }) => (
     <View style={s.empty}>
         <View style={s.emptyIcon}>
-            <Ionicons name="document-text-outline" size={28} color="rgba(255,255,255,0.2)" />
+            <Ionicons
+                name={tab === 'reports' ? 'document-text-outline' : 'chatbubbles-outline'}
+                size={28}
+                color="rgba(255,255,255,0.2)"
+            />
         </View>
-        <Text style={s.emptyTitle}>No saved reports yet</Text>
+        <Text style={s.emptyTitle}>
+            {tab === 'reports' ? 'No saved reports yet' : 'No saved conversations yet'}
+        </Text>
         <Text style={s.emptyBody}>
-            Generate a report with Field Force AI and tap Save Report to see it here.
+            {tab === 'reports'
+                ? 'Generate a report with Field Force AI and tap Save Report to see it here.'
+                : 'Open Field Assistant, ask a question, then tap Save & Share to keep the conversation here.'}
         </Text>
     </View>
 )
 
 // ─── Main screen ──────────────────────────────────────────────────────────────
 
-export const SavedReportsScreen: FC = () => {
-    const [reports, setReports]     = useState<SavedReport[]>([])
-    const [loading, setLoading]     = useState(true)
-    const [refreshing, setRefreshing] = useState(false)
-    const [error, setError]         = useState<string | null>(null)
+type Tab = 'reports' | 'chats'
 
-    const fetchReports = async (isRefresh = false) => {
+export const SavedReportsScreen: FC = () => {
+    const [tab, setTab]               = useState<Tab>('reports')
+    const [reports, setReports]       = useState<SavedReport[]>([])
+    const [chats, setChats]           = useState<SavedChat[]>([])
+    const [loading, setLoading]       = useState(true)
+    const [refreshing, setRefreshing] = useState(false)
+    const [error, setError]           = useState<string | null>(null)
+
+    // Pull both lists in parallel so switching tabs is instant. The
+    // network round-trip is dominated by Render's cold-start anyway, so
+    // saving the second request when the user only looks at one tab is
+    // not worth the complexity. Pull-to-refresh re-fetches both.
+    const fetchAll = async (isRefresh = false) => {
         if (isRefresh) setRefreshing(true)
         else setLoading(true)
         setError(null)
 
-        try {
-            // Cached so the user can review past reports while offline.
-            const data = await api.authCachedGet<SavedReport[]>('/api/ai/reports')
-            setReports(data)
-        } catch (e: any) {
-            setError('Could not load reports. Pull down to retry.')
-        } finally {
-            setLoading(false)
-            setRefreshing(false)
+        const [reportsResult, chatsResult] = await Promise.allSettled([
+            api.authCachedGet<SavedReport[]>('/api/ai/reports'),
+            listChats(),
+        ])
+        if (reportsResult.status === 'fulfilled') setReports(reportsResult.value)
+        if (chatsResult.status   === 'fulfilled') setChats(chatsResult.value)
+
+        if (reportsResult.status === 'rejected' && chatsResult.status === 'rejected') {
+            setError('Could not load saved items. Pull down to retry.')
         }
+        setLoading(false)
+        setRefreshing(false)
     }
 
     // Reload every time the screen comes into focus
-    useFocusEffect(useCallback(() => { fetchReports() }, []))
+    useFocusEffect(useCallback(() => { fetchAll() }, []))
+
+    const showingReports = tab === 'reports'
 
     return (
         <MainFrame headerMenu={['Menu2', ['Saved Reports']]}>
+            {/* Tabs — Reports vs Chats. Mirrors the two save flows so the
+                contractor can find either kind of saved AI artefact in
+                one place. */}
+            <View style={s.tabRow}>
+                <TouchableOpacity
+                    style={[s.tabBtn, showingReports && s.tabBtnActive]}
+                    onPress={() => setTab('reports')}
+                    activeOpacity={0.8}
+                >
+                    <Ionicons
+                        name="document-text-outline"
+                        size={14}
+                        color={showingReports ? '#0f172a' : '#a78bfa'}
+                    />
+                    <Text style={[s.tabBtnText, showingReports && s.tabBtnTextActive]}>
+                        Reports ({reports.length})
+                    </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[s.tabBtn, !showingReports && s.tabBtnActive]}
+                    onPress={() => setTab('chats')}
+                    activeOpacity={0.8}
+                >
+                    <Ionicons
+                        name="chatbubbles-outline"
+                        size={14}
+                        color={!showingReports ? '#0f172a' : '#a78bfa'}
+                    />
+                    <Text style={[s.tabBtnText, !showingReports && s.tabBtnTextActive]}>
+                        Chats ({chats.length})
+                    </Text>
+                </TouchableOpacity>
+            </View>
+
             {loading ? (
                 <View style={s.center}>
                     <ActivityIndicator size="large" color="#a78bfa" />
@@ -171,13 +345,13 @@ export const SavedReportsScreen: FC = () => {
                 <ScrollView
                     contentContainerStyle={s.center}
                     refreshControl={
-                        <RefreshControl refreshing={refreshing} onRefresh={() => fetchReports(true)} tintColor="#a78bfa" />
+                        <RefreshControl refreshing={refreshing} onRefresh={() => fetchAll(true)} tintColor="#a78bfa" />
                     }
                 >
                     <Ionicons name="cloud-offline-outline" size={36} color="rgba(255,255,255,0.2)" />
                     <Text style={s.errorText}>{error}</Text>
                 </ScrollView>
-            ) : (
+            ) : showingReports ? (
                 <FlatList
                     data={reports}
                     keyExtractor={item => String(item.id)}
@@ -185,7 +359,18 @@ export const SavedReportsScreen: FC = () => {
                     style={s.flatList}
                     contentContainerStyle={s.list}
                     showsVerticalScrollIndicator={false}
-                    ListEmptyComponent={<EmptyState />}
+                    ListEmptyComponent={<EmptyState tab="reports" />}
+                    scrollEnabled={false}
+                />
+            ) : (
+                <FlatList
+                    data={chats}
+                    keyExtractor={item => String(item.id)}
+                    renderItem={({ item }) => <ChatCard chat={item} />}
+                    style={s.flatList}
+                    contentContainerStyle={s.list}
+                    showsVerticalScrollIndicator={false}
+                    ListEmptyComponent={<EmptyState tab="chats" />}
                     scrollEnabled={false}
                 />
             )}
@@ -202,6 +387,50 @@ const s = StyleSheet.create({
     // width, which then makes the cards (width:100%) collapse along with it.
     flatList: { alignSelf: 'stretch', width: '100%' },
     list:     { padding: 16, gap: 12, paddingBottom: 32 },
+
+    // Reports / Chats tab toggle row
+    tabRow: {
+        flexDirection:     'row',
+        alignSelf:         'stretch',
+        gap:               8,
+        paddingHorizontal: 16,
+        paddingTop:        12,
+        paddingBottom:     4,
+    },
+    tabBtn: {
+        flex:            1,
+        flexDirection:   'row',
+        alignItems:      'center',
+        justifyContent:  'center',
+        gap:             6,
+        paddingVertical: 10,
+        borderRadius:    10,
+        backgroundColor: 'rgba(167,139,250,0.10)',
+        borderWidth:     1,
+        borderColor:     'rgba(167,139,250,0.25)',
+    },
+    tabBtnActive: {
+        backgroundColor: '#a78bfa',
+        borderColor:     '#a78bfa',
+    },
+    tabBtnText: {
+        fontFamily:    'poppins-bold',
+        fontSize:      12,
+        color:         '#a78bfa',
+        letterSpacing: 0.3,
+    },
+    tabBtnTextActive: {
+        color: '#0f172a',
+    },
+
+    // Chat transcript inside a ChatCard
+    transcriptRole: {
+        fontFamily:    'poppins-bold',
+        fontSize:      11,
+        color:         '#a78bfa',
+        letterSpacing: 0.3,
+        marginBottom:  2,
+    },
 
     center: {
         flex: 1,
@@ -329,12 +558,34 @@ const s = StyleSheet.create({
         borderColor:     'rgba(255,255,255,0.06)',
     },
 
-    // Date
+    // Date row + PDF export pill
+    cardFooterRow: {
+        flexDirection:  'row',
+        alignItems:     'center',
+        justifyContent: 'space-between',
+        marginTop:      6,
+    },
     dateText: {
         fontFamily: 'poppins-regular',
         fontSize:   10,
         color:      'rgba(255,255,255,0.25)',
-        marginTop:  4,
+    },
+    pdfBtn: {
+        flexDirection:     'row',
+        alignItems:        'center',
+        gap:               4,
+        paddingVertical:   4,
+        paddingHorizontal: 10,
+        borderRadius:      999,
+        backgroundColor:   'rgba(167,139,250,0.10)',
+        borderWidth:       1,
+        borderColor:       'rgba(167,139,250,0.25)',
+    },
+    pdfBtnText: {
+        fontFamily:    'poppins-bold',
+        fontSize:      10,
+        color:         '#a78bfa',
+        letterSpacing: 0.3,
     },
 
     // Empty state

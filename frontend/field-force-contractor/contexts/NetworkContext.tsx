@@ -21,6 +21,7 @@ import React, {
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
 
 import { pendingCount } from '../utils/outbox';
+import { pendingPhotoCount, drainPhotoOutbox } from '../utils/photoOutbox';
 
 interface NetworkContextType {
   isOnline:      boolean;
@@ -58,17 +59,26 @@ export function NetworkProvider({ children }: { children: ReactNode }) {
 
   const refreshPending = useCallback(async () => {
     try {
-      setPendingSync(await pendingCount());
+      const [jsonPending, photoPending] = await Promise.all([
+        pendingCount(),
+        pendingPhotoCount(),
+      ]);
+      setPendingSync(jsonPending + photoPending);
     } catch {
       // DB not ready on very first launch — safe to ignore.
     }
   }, []);
 
   const triggerSync = useCallback(async () => {
-    if (!_syncRunner || isSyncing) return;
+    if (isSyncing) return;
     setIsSyncing(true);
     try {
-      await _syncRunner();
+      // Drain JSON mutations and photo uploads concurrently. They use
+      // separate queues and locks so there's no contention.
+      await Promise.all([
+        _syncRunner ? _syncRunner() : Promise.resolve(),
+        drainPhotoOutbox(),
+      ]);
     } finally {
       setIsSyncing(false);
       await refreshPending();

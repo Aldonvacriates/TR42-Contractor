@@ -1,5 +1,5 @@
 from flask import request, jsonify
-from app.models import DutySessions, DutyLogs, db
+from app.models import Contractor, DutySessions, DutyLogs, db
 from .schemas import duty_session_schema, duty_logs_schema, status_change_schema
 from marshmallow import ValidationError
 from . import drive_time_bp
@@ -13,6 +13,23 @@ def _ensure_utc(dt):
     if dt is None:
         return None
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _resolve_contractor_id():
+    """Map the JWT's user_id (auth_user.id) to the contractor.id.
+
+    Drive time rows are keyed on contractor.id, not auth_user.id, so the
+    raw `request.user_id` from the token can't be used directly. Mirrors
+    the pattern in field_contractors/routes.py and the analytics routes.
+    Returns the contractor.id string, or None if no contractor row exists
+    for this user (the route should then return 403 / 404 as appropriate).
+    """
+    contractor = (
+        db.session.query(Contractor)
+        .filter(Contractor.user_id == request.user_id)
+        .first()
+    )
+    return contractor.id if contractor else None
 
 # FMCSA limits (in seconds)
 DAILY_DRIVE_LIMIT = 11 * 3600       # 11 hours driving per day
@@ -58,7 +75,9 @@ def _get_or_create_session(contractor_id):
 @drive_time_bp.route('/current', methods=['GET'])
 @token_required
 def get_current_session():
-    contractor_id = request.user_id
+    contractor_id = _resolve_contractor_id()
+    if not contractor_id:
+        return jsonify({"error": "No contractor record for this user"}), 404
     today = date.today()
 
     session = db.session.query(DutySessions).filter_by(
@@ -103,7 +122,9 @@ def change_status():
         return jsonify(e.messages), 400
 
     new_status = data['status']
-    contractor_id = request.user_id
+    contractor_id = _resolve_contractor_id()
+    if not contractor_id:
+        return jsonify({"error": "No contractor record for this user"}), 404
 
     # Use client-supplied timestamp when available (offline sync support),
     # otherwise fall back to the current server time.
@@ -151,7 +172,9 @@ def change_status():
 @drive_time_bp.route('/stop', methods=['POST'])
 @token_required
 def stop_session():
-    contractor_id = request.user_id
+    contractor_id = _resolve_contractor_id()
+    if not contractor_id:
+        return jsonify({"error": "No contractor record for this user"}), 404
     today = date.today()
     now = datetime.now(timezone.utc)
 
@@ -190,7 +213,9 @@ def stop_session():
 @drive_time_bp.route('/logs', methods=['GET'])
 @token_required
 def get_logs():
-    contractor_id = request.user_id
+    contractor_id = _resolve_contractor_id()
+    if not contractor_id:
+        return jsonify({"error": "No contractor record for this user"}), 404
     today = date.today()
 
     session = db.session.query(DutySessions).filter_by(

@@ -5,6 +5,7 @@
 
 import { FC, useEffect, useRef, useState } from 'react'
 import {
+    Alert,
     Animated,
     KeyboardAvoidingView,
     Modal,
@@ -17,6 +18,24 @@ import {
     View,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+
+// ─── Speech recognition shim ─────────────────────────────────────────────────
+// expo-speech-recognition is a custom native module not bundled in Expo Go.
+// Mirrors the shim pattern in TicketDetailScreen so this screen still mounts
+// when running under Expo Go — voice dictation just becomes inactive.
+let ExpoSpeechRecognitionModule: any = {
+    stop: () => {},
+    start: (_opts?: any) => {},
+    requestPermissionsAsync: async () => ({ granted: false }),
+}
+let useSpeechRecognitionEvent: any = (_event: string, _handler: any) => {}
+try {
+    const m = require('expo-speech-recognition')
+    ExpoSpeechRecognitionModule = m.ExpoSpeechRecognitionModule
+    useSpeechRecognitionEvent    = m.useSpeechRecognitionEvent
+} catch {
+    // running in Expo Go, voice dictation disabled
+}
 import { useNavigation } from '@react-navigation/native'
 import { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import { MainFrame } from '@/components/MainFrame'
@@ -216,12 +235,46 @@ export const InspectionAssistScreen: FC = () => {
     const [suggestionsVisible, setSuggestions] = useState(true)
     const [refineMsgId, setRefineMsgId]        = useState<string | null>(null)
     const [refineFeedback, setRefineFeedback]  = useState('')
+    const [listening, setListening]            = useState(false)
     const scrollRef                            = useRef<ScrollView>(null)
     const abortRef                             = useRef<(() => void) | null>(null)
 
     // Cancel any in-flight stream on unmount so the user can navigate away
     // without leaving the request hanging.
     useEffect(() => () => { abortRef.current?.() }, [])
+
+    // Voice dictation hooks (Cory's stakeholder ask: "Report/task auto-fill
+    // by voice — contractor dictates, AI populates task fields"). The
+    // transcript is fed straight into handleSend so the AI structures the
+    // dictation into a report exactly like a typed message would.
+    useSpeechRecognitionEvent('start', () => setListening(true))
+    useSpeechRecognitionEvent('end',   () => setListening(false))
+    useSpeechRecognitionEvent('result', (event: any) => {
+        const transcript = event?.results?.[0]?.transcript
+        if (transcript && transcript.trim()) {
+            handleSend(transcript.trim())
+        }
+    })
+    useSpeechRecognitionEvent('error', (event: any) => {
+        console.warn('Speech error:', event?.error, event?.message)
+        setListening(false)
+    })
+
+    const toggleVoice = async () => {
+        if (listening) {
+            ExpoSpeechRecognitionModule.stop()
+            return
+        }
+        const { granted } = await ExpoSpeechRecognitionModule.requestPermissionsAsync()
+        if (!granted) {
+            Alert.alert(
+                'Microphone needed',
+                'Allow microphone and speech recognition access to dictate inspection reports.',
+            )
+            return
+        }
+        ExpoSpeechRecognitionModule.start({ lang: 'en-US', continuous: false })
+    }
 
     const scroll = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80)
 
@@ -379,6 +432,25 @@ export const InspectionAssistScreen: FC = () => {
                         <Ionicons name="chevron-forward" size={14} color="rgba(167,139,250,0.6)" style={{ marginLeft: 'auto' }} />
                     </TouchableOpacity>
 
+                    {/* ── Voice dictation chip (Cory ask: hands-free reporting) ──
+                        Always visible, even after the conversation starts, so
+                        contractors can keep dictating new reports throughout
+                        a session. */}
+                    <TouchableOpacity
+                        style={[s.chip, s.voiceChip, listening && s.voiceChipActive]}
+                        onPress={toggleVoice}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons
+                            name={listening ? 'stop-circle' : 'mic'}
+                            size={14}
+                            color={listening ? '#0a0a0a' : '#34d399'}
+                        />
+                        <Text style={[s.chipText, s.voiceChipText, listening && s.voiceChipTextActive]}>
+                            {listening ? 'Listening... tap to stop' : 'Speak instead of typing'}
+                        </Text>
+                    </TouchableOpacity>
+
                     {/* ── Suggestion chips ── */}
                     {suggestionsVisible && (
                         <View style={s.chips}>
@@ -432,49 +504,62 @@ export const InspectionAssistScreen: FC = () => {
                 </ScrollView>
             </MainFrame>
 
-            {/* ── Refine modal ── */}
+            {/* ── Refine modal ──
+                React Native Modals render in their own native window above
+                the React tree, so the outer screen-level KeyboardAvoidingView
+                doesn't lift modal content when the keyboard appears. The
+                fix is to wrap the modal's CONTENT in its own
+                KeyboardAvoidingView so the card itself shifts up. */}
             <Modal
                 visible={refineMsgId !== null}
                 transparent
                 animationType="fade"
                 onRequestClose={() => setRefineMsgId(null)}
             >
-                <View style={s.modalBackdrop}>
-                    <View style={s.modalCard}>
-                        <Text style={s.modalTitle}>Refine report</Text>
-                        <Text style={s.modalHint}>
-                            Tell the assistant what to change. The original report stays in
-                            view and gets revised in place.
-                        </Text>
-                        <TextInput
-                            style={s.modalInput}
-                            placeholder="e.g. bump priority to high, mention the broken valve"
-                            placeholderTextColor="rgba(255,255,255,0.35)"
-                            value={refineFeedback}
-                            onChangeText={setRefineFeedback}
-                            multiline
-                            autoFocus
-                        />
-                        <View style={s.modalRow}>
-                            <TouchableOpacity
-                                style={s.modalCancel}
-                                onPress={() => setRefineMsgId(null)}
-                                activeOpacity={0.7}
-                            >
-                                <Text style={s.modalCancelText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[s.modalSubmit, !refineFeedback.trim() && s.modalSubmitDisabled]}
-                                onPress={submitRefine}
-                                disabled={!refineFeedback.trim()}
-                                activeOpacity={0.7}
-                            >
-                                <Ionicons name="sparkles" size={14} color="#0a0a0a" />
-                                <Text style={s.modalSubmitText}>Apply</Text>
-                            </TouchableOpacity>
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    // Bump the card a bit further off the keyboard top edge
+                    // so the Apply / Cancel row clears the suggestion strip.
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 24 : 0}
+                >
+                    <View style={s.modalBackdrop}>
+                        <View style={s.modalCard}>
+                            <Text style={s.modalTitle}>Refine report</Text>
+                            <Text style={s.modalHint}>
+                                Tell the assistant what to change. The original report stays in
+                                view and gets revised in place.
+                            </Text>
+                            <TextInput
+                                style={s.modalInput}
+                                placeholder="e.g. bump priority to high, mention the broken valve"
+                                placeholderTextColor="rgba(255,255,255,0.35)"
+                                value={refineFeedback}
+                                onChangeText={setRefineFeedback}
+                                multiline
+                                autoFocus
+                            />
+                            <View style={s.modalRow}>
+                                <TouchableOpacity
+                                    style={s.modalCancel}
+                                    onPress={() => setRefineMsgId(null)}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text style={s.modalCancelText}>Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[s.modalSubmit, !refineFeedback.trim() && s.modalSubmitDisabled]}
+                                    onPress={submitRefine}
+                                    disabled={!refineFeedback.trim()}
+                                    activeOpacity={0.7}
+                                >
+                                    <Ionicons name="sparkles" size={14} color="#0a0a0a" />
+                                    <Text style={s.modalSubmitText}>Apply</Text>
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </View>
-                </View>
+                </KeyboardAvoidingView>
             </Modal>
         </KeyboardAvoidingView>
     )
@@ -561,6 +646,26 @@ const s = StyleSheet.create({
         fontFamily: 'poppins-regular',
         fontSize:   13,
         color:      '#a78bfa',
+    },
+
+    // Voice chip — green to differentiate from purple suggestion chips,
+    // flips to a solid green when actively listening so the contractor
+    // sees the recording state at a glance.
+    voiceChip: {
+        backgroundColor: 'rgba(52,211,153,0.08)',
+        borderColor:     'rgba(52,211,153,0.30)',
+        marginBottom:    8,
+    },
+    voiceChipActive: {
+        backgroundColor: '#34d399',
+        borderColor:     '#34d399',
+    },
+    voiceChipText: {
+        color: '#34d399',
+    },
+    voiceChipTextActive: {
+        color:     '#0a0a0a',
+        fontFamily: 'poppins-bold',
     },
 
     // Divider

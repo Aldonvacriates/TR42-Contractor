@@ -15,10 +15,11 @@
 // them that the vendor will send a new PIN after identity verification.
 //
 // ─────────────────────────────────────────────────────────────
-// DEV ONLY: The dev PIN is set to "123456" for testing.
-// In production replace the DEV_PIN check with:
-//   const savedPin = await SecureStore.getItemAsync('offlinePin');
-//   if (pin !== savedPin) { setPinError(...); return; }
+// PIN verification routes through utils/secureStorage.verifyOfflinePin
+// so this screen and the in-task verification modal share a single
+// source of truth. Until a real PIN is provisioned via saveOfflinePin
+// it falls through to DEMO_FALLBACK_PIN ("123456") defined in that
+// module — see PRODUCTION TODO there for the removal plan.
 // ─────────────────────────────────────────────────────────────
 
 import { useState } from 'react';
@@ -44,11 +45,10 @@ import { RootStackParamList } from '../App';
 import { MainFrame }          from '../components/MainFrame';
 import { colors, spacing, radius, fontSize, fonts } from '../constants/theme';
 import { useAuth }            from '../contexts/AuthContext';
+import { verifyOfflinePin, DEMO_FALLBACK_PIN } from '../utils/secureStorage';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'OfflineLogin'>;
 type Route = RouteProp<RootStackParamList, 'OfflineLogin'>;
-
-const DEV_PIN = '123456'; // DEV ONLY — remove before production
 
 export default function OfflineLoginScreen() {
   const navigation                    = useNavigation<Nav>();
@@ -84,8 +84,11 @@ export default function OfflineLoginScreen() {
       setPinError(`PIN is too short — please enter all 6 digits (${pin.length}/6 entered).`);
       return;
     }
-    // DEV ONLY — replace with SecureStore check in production
-    if (pin !== DEV_PIN) {
+    // Source of truth lives in utils/secureStorage.verifyOfflinePin, which
+    // checks the SecureStore-persisted PIN first and falls back to the
+    // demo PIN until a real one is provisioned.
+    const ok = await verifyOfflinePin(pin);
+    if (!ok) {
       setPinError('Incorrect PIN. Please try again.');
       return;
     }
@@ -200,7 +203,7 @@ export default function OfflineLoginScreen() {
             <View style={styles.devBanner}>
               <Ionicons name="construct-outline" size={14} color={colors.warning} />
               <Text style={styles.devBannerText}>
-                DEV MODE — Test PIN: {DEV_PIN}
+                DEV MODE — Test PIN: {DEMO_FALLBACK_PIN}
               </Text>
             </View>
 
