@@ -14,7 +14,12 @@ export const Menus = {
     {label:"Dashboard",icon:Assets.icons.HomeIcon,component:"Home"},
     {label:"Tickets",icon:Assets.icons.TaskIcon,component:"Tickets"},
     {label:"Contacts",icon:Assets.icons.ContactIcon,component:"Contacts"},
-    {label:"AI",icon:Assets.icons.AiIcon,component:"InspectionAssist"},
+    // The AI tab opens the conversational assistant (ChatAssistantScreen),
+    // which is where the OSHA-citation templates and Q&A flow live.
+    // InspectionAssistScreen is reachable from the inspection flow itself
+    // (ticket -> Inspection -> AI assist) where the one-shot report
+    // generator makes sense; routing the bottom tab there hid the chat.
+    {label:"AI",icon:Assets.icons.AiIcon,component:"ChatAssistant"},
     
 
 

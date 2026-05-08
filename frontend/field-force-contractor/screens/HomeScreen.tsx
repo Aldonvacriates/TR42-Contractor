@@ -1,14 +1,13 @@
-import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useState, useEffect, useCallback } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../App';
 import { MainFrame } from '../components/MainFrame';
+import { DriveTimeStatusBar } from '../components/DriveTimeStatusBar';
 import { useAuth } from '../contexts/AuthContext';
-
-// ─── DEV MODE — set to false before shipping ──────────────────────────────────
-const DEV_MODE = true;
+import { api } from '../utils/api';
 
 type Nav = NativeStackNavigationProp<RootStackParamList, 'Dashboard'>;
 type Status = 'driving' | 'work' | 'offline';
@@ -19,23 +18,69 @@ const statusOptions: { value: Status; label: string; color: string; bg: string; 
     { value: 'offline', label: 'Offline', color: '#9ca3af', bg: 'rgba(107,114,128,0.2)', border: '#9ca3af' },
 ];
 
-const stats = [
-    { icon: 'checkmark-circle' as const, label: 'Completed', value: '24', color: '#60a5fa' },
-    { icon: 'time'             as const, label: 'Pending',   value: '8',  color: '#f59e0b' },
-    { icon: 'trending-up'      as const, label: 'Progress',  value: '75%', color: '#a78bfa' },
-];
+// ── Backend response shapes ───────────────────────────────────────────────
+// /api/analytics/dashboard/stats — total ticket counts and completion rate
+interface DashboardStats {
+    total_jobs:      number;
+    completed_jobs:  number;
+    completion_rate: number;
+    flag_rate:       number;
+    avg_rating:      number;
+}
 
-const recentActivities = [
-    { task: 'Update project documentation',   time: '2 hours ago', status: 'completed' },
-    { task: 'Review team feedback',           time: '4 hours ago', status: 'completed' },
-    { task: 'Schedule meeting with clients',  time: '1 day ago',   status: 'pending'   },
-];
+// /api/analytics/jobs — paginated ticket history with parent work_order
+interface JobRow {
+    id:             string;
+    description:    string | null;
+    status:         string;
+    priority:       string | null;
+    end_time:       string | null;
+    created_at:     string | null;
+}
+
+interface JobsResponse {
+    jobs:       JobRow[];
+    pagination: { page: number; limit: number; total: number; total_pages: number };
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+
+function relativeTime(iso: string | null): string {
+    if (!iso) return '';
+    const ms = Date.now() - new Date(iso).getTime();
+    if (ms < 0) return 'just now';
+    const minutes = Math.floor(ms / 60000);
+    if (minutes < 1)   return 'just now';
+    if (minutes < 60)  return `${minutes} min ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24)    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+    const days = Math.floor(hours / 24);
+    if (days < 7)      return `${days} day${days === 1 ? '' : 's'} ago`;
+    const weeks = Math.floor(days / 7);
+    if (weeks < 5)     return `${weeks} week${weeks === 1 ? '' : 's'} ago`;
+    return new Date(iso).toLocaleDateString();
+}
+
+function jobLabel(job: JobRow): string {
+    const desc = (job.description || '').trim();
+    if (desc) return desc.length > 60 ? `${desc.slice(0, 60)}...` : desc;
+    return `Ticket ${job.id.slice(0, 8)}`;
+}
+
+function isCompletedStatus(status: string): boolean {
+    const upper = (status || '').toUpperCase();
+    return upper === 'COMPLETED' || upper === 'APPROVED';
+}
 
 export default function HomeScreen() {
     const [currentStatus, setCurrentStatus] = useState<Status>('work');
     const [isStatusOpen, setIsStatusOpen] = useState(false);
+    const [stats, setStats]               = useState<DashboardStats | null>(null);
+    const [statsLoading, setStatsLoading] = useState(true);
+    const [recentJobs, setRecentJobs]     = useState<JobRow[]>([]);
+    const [jobsLoading, setJobsLoading]   = useState(true);
     const nav = useNavigation<Nav>();
-    const { logout } = useAuth();
+    const { logout: _logout } = useAuth();
     const route = useRoute();
 
     // If we land on the legacy "Home" route (e.g. SplashScreen timer),
@@ -46,7 +91,36 @@ export default function HomeScreen() {
         }
     }, []);
 
+    // Pull real dashboard stats + recent jobs from the analytics blueprint.
+    // Both endpoints filter by the authenticated contractor server-side, so
+    // no contractor-id wrangling needed here.
+    //
+    // Wrapped so pull-to-refresh can reuse the same fetch path.
+    const fetchDashboard = async () => {
+        const [statsResult, jobsResult] = await Promise.allSettled([
+            api.authGet<DashboardStats>('/api/analytics/dashboard/stats'),
+            api.authGet<JobsResponse>('/api/analytics/jobs?limit=5'),
+        ]);
+        if (statsResult.status === 'fulfilled') setStats(statsResult.value);
+        if (jobsResult.status === 'fulfilled')  setRecentJobs(jobsResult.value.jobs ?? []);
+        setStatsLoading(false);
+        setJobsLoading(false);
+    };
+
+    // Re-fetch on focus so navigating back from a ticket / inspection / AI
+    // screen reflects the new server-side state (anomaly flag changes,
+    // newly-completed tickets, etc.) without needing a manual pull.
+    useFocusEffect(useCallback(() => {
+        fetchDashboard().catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []));
+
     const currentStatusData = statusOptions.find(s => s.value === currentStatus)!;
+
+    const totalJobs    = stats?.total_jobs ?? 0;
+    const completed    = stats?.completed_jobs ?? 0;
+    const pending      = Math.max(totalJobs - completed, 0);
+    const completionPct = stats ? Math.round(stats.completion_rate) : 0;
 
     const handleStatusSelect = (status: Status) => {
         setCurrentStatus(status);
@@ -54,7 +128,7 @@ export default function HomeScreen() {
     };
 
     return (
-        <MainFrame header='home' headerMenu={["none", []]}>
+        <MainFrame header='home' headerMenu={["none", []]} onRefresh={fetchDashboard}>
 
             {/* ── Title bar ──────────────────────────────────────────
                 Styled to match the Menu2 navy bar visually but with no
@@ -69,6 +143,11 @@ export default function HomeScreen() {
                 {/* [Component12 / Logo goes here] */}
                 <Text style={styles.welcome}>Welcome back!</Text>
             </View>
+
+            {/* ── Drive time alert (Cory stakeholder ask) ── */}
+            {/* Renders only when remaining drive time is within 60 minutes of
+                the FMCSA daily limit. Tap to navigate to DriveTimeTracker. */}
+            <DriveTimeStatusBar />
 
             {/* ── Status Selector ── */}
             <View style={styles.section}>
@@ -111,77 +190,74 @@ export default function HomeScreen() {
                 )}
             </View>
 
-            {/* ── Stats Grid ── */}
+            {/* ── Stats Grid (real data from /api/analytics/dashboard/stats) ── */}
             <View style={styles.statsRow}>
-                {stats.map(stat => (
-                    <View key={stat.label} style={styles.statCard}>
-                        <Ionicons name={stat.icon} size={24} color={stat.color} />
-                        <Text style={styles.statValue}>{stat.value}</Text>
-                        <Text style={styles.statLabel}>{stat.label}</Text>
-                    </View>
-                ))}
+                <View style={styles.statCard}>
+                    <Ionicons name="checkmark-circle" size={24} color="#60a5fa" />
+                    <Text style={styles.statValue}>
+                        {statsLoading ? '–' : completed}
+                    </Text>
+                    <Text style={styles.statLabel}>Completed</Text>
+                </View>
+                <View style={styles.statCard}>
+                    <Ionicons name="time" size={24} color="#f59e0b" />
+                    <Text style={styles.statValue}>
+                        {statsLoading ? '–' : pending}
+                    </Text>
+                    <Text style={styles.statLabel}>Pending</Text>
+                </View>
+                <View style={styles.statCard}>
+                    <Ionicons name="trending-up" size={24} color="#a78bfa" />
+                    <Text style={styles.statValue}>
+                        {statsLoading ? '–' : `${completionPct}%`}
+                    </Text>
+                    <Text style={styles.statLabel}>Completion</Text>
+                </View>
             </View>
 
-            {/* ── Recent Activity ── */}
+            {/* ── Recent Activity (real data from /api/analytics/jobs) ── */}
             <View style={styles.card}>
                 <Text style={styles.cardTitle}>Recent Activity</Text>
-                {recentActivities.map((activity, index) => (
-                    <View
-                        key={index}
-                        style={[
-                            styles.activityRow,
-                            index < recentActivities.length - 1 && styles.activityBorder,
-                        ]}
-                    >
-                        <View style={[
-                            styles.activityDot,
-                            { backgroundColor: activity.status === 'completed' ? '#16a34a' : '#ea580c' }
-                        ]} />
-                        <View style={styles.activityText}>
-                            <Text style={styles.activityTask}>{activity.task}</Text>
-                            <Text style={styles.activityTime}>{activity.time}</Text>
-                        </View>
+                {jobsLoading ? (
+                    <View style={[styles.activityRow, { justifyContent: 'center' }]}>
+                        <ActivityIndicator size="small" color="#9ca3af" />
                     </View>
-                ))}
+                ) : recentJobs.length === 0 ? (
+                    <View style={styles.activityRow}>
+                        <Text style={styles.activityTime}>No tickets assigned yet.</Text>
+                    </View>
+                ) : (
+                    recentJobs.map((job, index) => {
+                        const completed = isCompletedStatus(job.status);
+                        const timestamp = job.end_time ?? job.created_at;
+                        return (
+                            <View
+                                key={job.id}
+                                style={[
+                                    styles.activityRow,
+                                    index < recentJobs.length - 1 && styles.activityBorder,
+                                ]}
+                            >
+                                <View style={[
+                                    styles.activityDot,
+                                    { backgroundColor: completed ? '#16a34a' : '#ea580c' }
+                                ]} />
+                                <View style={styles.activityText}>
+                                    <Text style={styles.activityTask} numberOfLines={1}>
+                                        {jobLabel(job)}
+                                    </Text>
+                                    <Text style={styles.activityTime}>
+                                        {relativeTime(timestamp)}
+                                    </Text>
+                                </View>
+                            </View>
+                        );
+                    })
+                )}
             </View>
 
-            {/* ── Drive Time Warning ── */}
-            <View style={styles.warning}>
-                <Text style={styles.warningText}>Over 11 hours drive time, time for a break</Text>
-            </View>
-
-            {/* ── DEV: Quick navigation ── */}
-            {DEV_MODE && (
-                <View style={styles.devPanel}>
-                    <Text style={styles.devLabel}>⚙ DEV TOOLS</Text>
-                    <View style={styles.devGrid}>
-                        <TouchableOpacity style={styles.devButton} onPress={() => logout()}>
-                            <Ionicons name="log-in-outline" size={18} color="#f59e0b" />
-                            <Text style={styles.devButtonText}>Login</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.devButton} onPress={() => nav.navigate('Inspection', { bypassGate: true })}>
-                            <Ionicons name="construct-outline" size={18} color="#f59e0b" />
-                            <Text style={styles.devButtonText}>Inspection</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.devButton} onPress={() => nav.navigate('DriveTimeTracker')}>
-                            <Ionicons name="speedometer-outline" size={18} color="#f59e0b" />
-                            <Text style={styles.devButtonText}>Drive Time</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.devButton} onPress={() => nav.navigate('InspectionAssist')}>
-                            <Ionicons name="sparkles-outline" size={18} color="#f59e0b" />
-                            <Text style={styles.devButtonText}>AI Assist</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.devButton} onPress={() => nav.navigate('SavedReports')}>
-                            <Ionicons name="document-text-outline" size={18} color="#f59e0b" />
-                            <Text style={styles.devButtonText}>Saved Reports</Text>
-                        </TouchableOpacity>
-                    </View>
-                    <TouchableOpacity style={styles.devLogoutButton} onPress={logout}>
-                        <Ionicons name="log-out-outline" size={16} color="#ef4444" />
-                        <Text style={styles.devLogoutText}>Logout</Text>
-                    </TouchableOpacity>
-                </View>
-            )}
+            {/* Drive-time warning is rendered by DriveTimeStatusBar at the top
+                of this screen — no static warning needed here anymore. */}
 
         </MainFrame>
     );

@@ -23,11 +23,17 @@ Routes
 import json
 import logging
 import re
+from datetime import datetime, timezone
 
 from flask import Response, jsonify, request, stream_with_context
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.models import AiInspectionReports, Contractor, Ticket, TicketPhoto, db
+from app.models import AiChatSession, AiInspectionReports, Contractor, Ticket, TicketPhoto, db
+
+
+def _utcnow() -> datetime:
+    """Aware UTC timestamp. Mirrors models._utcnow without coupling to it."""
+    return datetime.now(timezone.utc)
 from app.util.auth import token_required
 
 from . import ai_bp
@@ -42,11 +48,14 @@ from .errors import (
 )
 from .providers import get_provider, resilient_call
 from .schemas import (
+    ai_chat_session_schema,
+    ai_chat_sessions_schema,
     ai_report_schema,
     ai_reports_schema,
     chat_schema,
     inspection_assist_schema,
     refine_report_schema,
+    save_chat_schema,
     save_report_schema,
 )
 
@@ -126,12 +135,81 @@ def _parse_json_strict(text: str):
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError as e:
+        # Salvage path: Gemini sometimes truncates mid-response (especially
+        # via the OpenAI-compat endpoint when the upstream connection chunks
+        # oddly), so we end up with a near-valid but unclosed JSON object.
+        # Try to extract whatever string fields and arrays the model emitted
+        # before we give up. Better to render a partial, honest analysis
+        # than a hard error.
+        salvaged = _salvage_partial_json(cleaned)
+        if salvaged is not None:
+            log.info(
+                'AI JSON was truncated; salvaged fields=%s | err=%s',
+                list(salvaged.keys()), e,
+            )
+            return salvaged
+
         log.warning('AI returned non-JSON response: %s | text=%r', e, cleaned[:200])
         raise AIError(
             AI_BAD_RESPONSE,
             'AI returned an unexpected response format',
             502,
         )
+
+
+# Field-by-field rescue for truncated photo-analysis responses. We pull the
+# "summary"/"severity" strings and the "concerns"/"recommendations" arrays
+# in whatever order they appear, ignoring the missing closing `}`. Anything
+# we can't recover gets a sensible default so the frontend always renders
+# something rather than a hard error during a demo.
+_JSON_STRING_FIELD_RE = re.compile(
+    r'"(\w+)"\s*:\s*"((?:[^"\\]|\\.)*)"',
+    re.DOTALL,
+)
+_JSON_ARRAY_FIELD_RE = re.compile(
+    r'"(\w+)"\s*:\s*\[([^\]]*)\]',
+    re.DOTALL,
+)
+_VALID_SEVERITIES = {'none', 'low', 'medium', 'high'}
+
+def _salvage_partial_json(text: str):
+    """Best-effort recovery from a truncated photo-analysis response.
+
+    Returns a dict shaped like the PhotoAnalysis schema (summary, severity,
+    concerns[], recommendations[]) or None if the text doesn't even look
+    like an analysis attempt — in which case the caller still raises
+    AI_BAD_RESPONSE.
+    """
+    if not text or '{' not in text:
+        return None
+
+    strings = {m.group(1): m.group(2) for m in _JSON_STRING_FIELD_RE.finditer(text)}
+    if 'summary' not in strings and 'severity' not in strings:
+        # Doesn't contain even the leading fields — give up.
+        return None
+
+    summary = strings.get('summary', '').strip()
+    severity_raw = strings.get('severity', '').strip().lower()
+    severity = severity_raw if severity_raw in _VALID_SEVERITIES else 'none'
+
+    def _items_from_array(field: str):
+        for m in _JSON_ARRAY_FIELD_RE.finditer(text):
+            if m.group(1) != field:
+                continue
+            inner = m.group(2)
+            return [
+                s.group(1).strip()
+                for s in re.finditer(r'"((?:[^"\\]|\\.)*)"', inner)
+                if s.group(1).strip()
+            ]
+        return []
+
+    return {
+        'summary':         summary or 'Partial analysis received from the AI; details below may be incomplete.',
+        'severity':        severity,
+        'concerns':        _items_from_array('concerns'),
+        'recommendations': _items_from_array('recommendations'),
+    }
 
 
 def _resolve_contractor():
@@ -282,14 +360,57 @@ def analyze_photo():
     if not photo.photo_content:
         raise AIError(AI_BAD_REQUEST, 'photo has no content stored', 400)
 
+    # If we already analyzed this photo and the caller didn't ask for a
+    # fresh take, return the cached result. Saves Gemini quota and lets
+    # the vendor/client review flow show the same answer the contractor
+    # saw at capture time.
+    force_refresh = bool(body.get('refresh'))
+    if photo.ai_analysis and not force_refresh:
+        return jsonify(photo.ai_analysis), 200
+
+    # 2048 tokens gives Gemini comfortable headroom to finish the JSON
+    # without mid-stream truncation. The prompt + structured schema fit
+    # well under that ceiling for any realistic photo analysis.
     text = resilient_call(lambda p: p.generate_with_image(
         messages=[{'role': 'user', 'content': 'Analyze this job-site photo.'}],
         system=_PHOTO_PROMPT,
         image_bytes=photo.photo_content,
         mime_type='image/jpeg',
-        max_tokens=1024,
+        max_tokens=2048,
     ))
-    return jsonify(_parse_json_strict(text)), 200
+    analysis = _parse_json_strict(text)
+
+    # Persist the structured result on the photo row so it survives
+    # across sessions and is visible to the vendor/client review flow.
+    try:
+        photo.ai_analysis    = analysis
+        photo.ai_analyzed_at = _utcnow()
+
+        # Auto-flag the parent ticket on a HIGH-severity photo. Closes
+        # Cory's "AI catches a problem" loop — the dashboard's anomaly
+        # count surfaces it without manual escalation. Don't clobber an
+        # anomaly_reason set by another path (e.g. drive-time excursion);
+        # only fill it if empty.
+        if (analysis.get('severity') or '').lower() == 'high':
+            ticket = db.session.query(Ticket).filter(Ticket.id == photo.ticket_id).first()
+            if ticket is not None:
+                ticket.anomaly_flag = True
+                if not (ticket.anomaly_reason or '').strip():
+                    summary = (analysis.get('summary') or '').strip()
+                    ticket.anomaly_reason = (
+                        f'AI photo review (HIGH severity): {summary[:240]}'
+                        if summary else 'AI photo review flagged HIGH severity'
+                    )
+
+        db.session.commit()
+    except Exception:
+        # Persistence is non-fatal — the contractor still gets the
+        # analysis even if the save fails. Log and roll back so the
+        # session is clean for the next request.
+        log.exception('Failed to persist photo analysis for photo_id=%s', photo_id)
+        db.session.rollback()
+
+    return jsonify(analysis), 200
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -368,3 +489,75 @@ def get_reports():
         item['recommended_actions'] = json.loads(row.recommended_actions)
 
     return jsonify(results), 200
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# POST /api/ai/save-chat
+# Persist a Field Assistant conversation to the local DB. Mirrors save-report
+# so SavedReports lists both kinds of saved AI artefact through one screen.
+# ─────────────────────────────────────────────────────────────────────────────
+@ai_bp.route('/save-chat', methods=['POST'])
+@token_required
+@handle_ai_errors
+def save_chat():
+    data = save_chat_schema.load(request.get_json() or {})
+
+    # Optional photo attachment must belong to a ticket the caller is
+    # actually assigned to. Re-validate here so a contractor can't bind
+    # someone else's photo to their saved chat.
+    photo_id = data.get('photo_id')
+    if photo_id:
+        contractor = (
+            db.session.query(Contractor)
+            .filter(Contractor.user_id == request.user_id)
+            .first()
+        )
+        if not contractor:
+            raise AIError(AI_BAD_REQUEST, 'no contractor record for this user', 400)
+        owns_photo = (
+            db.session.query(TicketPhoto)
+            .join(Ticket, TicketPhoto.ticket_id == Ticket.id)
+            .filter(
+                TicketPhoto.id == photo_id,
+                Ticket.assigned_contractor == contractor.id,
+            )
+            .first()
+        )
+        if not owns_photo:
+            # 404 instead of 403 so we don't leak whether the photo exists.
+            raise AIError(AI_NOT_FOUND, 'attached photo not found', 404)
+
+    session = AiChatSession(
+        contractor_id = request.user_id,
+        title         = data['title'],
+        summary       = data.get('summary'),
+        messages      = data['messages'],
+        photo_id      = photo_id,
+    )
+    db.session.add(session)
+    try:
+        db.session.commit()
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        log.exception('Failed to save AI chat session')
+        raise AIError(AI_INTERNAL, f'Could not save chat: {e}', 500)
+
+    return jsonify(ai_chat_session_schema.dump(session)), 201
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# GET /api/ai/chats
+# Returns saved Field Assistant conversations for the logged-in contractor,
+# newest first.
+# ─────────────────────────────────────────────────────────────────────────────
+@ai_bp.route('/chats', methods=['GET'])
+@token_required
+@handle_ai_errors
+def get_chats():
+    sessions = (
+        db.session.query(AiChatSession)
+        .filter_by(contractor_id=request.user_id)
+        .order_by(AiChatSession.created_at.desc())
+        .all()
+    )
+    return jsonify(ai_chat_sessions_schema.dump(sessions)), 200
