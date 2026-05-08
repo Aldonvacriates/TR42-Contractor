@@ -29,6 +29,7 @@ import { SavedReportsScreen } from "./screens/SavedReportsScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import TicketDetailScreen from "./screens/TicketDetailScreen";
 import TicketsScreen from "./screens/TicketsScreen";
+import MapScreen from "./screens/MapScreen";
 
 // ── TROY — Auth screens ──────────────────────────────────────
 import BiometricScreen from "./screens/BiometricScreen";
@@ -59,6 +60,7 @@ export type RootStackParamList = {
   Chat: { name: string; contactId?: string };
   Tickets: undefined;
   TicketDetail: { taskId: number; inspectionDone?: boolean };
+  TicketsMap: undefined;
 
   // ── Jonathan — Work Orders (placeholder until real screen built) ──
   JobDetail: { jobId: string; workOrderId: string };
@@ -142,6 +144,7 @@ function RootNavigator() {
           <StackNavigator.Screen name="Chat"             component={Chat}                    />
           <StackNavigator.Screen name="Tickets"          component={TicketsScreen}           />
           <StackNavigator.Screen name="TicketDetail"     component={TicketDetailScreen}      />
+          <StackNavigator.Screen name="TicketsMap"       component={MapScreen}               />
           <StackNavigator.Screen name="Profile"          component={ProfileScreen}           />
           <StackNavigator.Screen name="LicenseDetails"   component={LicenseScreen}           />
           <StackNavigator.Screen name="TaskHistory"      component={TaskHistoryScreen}       />
