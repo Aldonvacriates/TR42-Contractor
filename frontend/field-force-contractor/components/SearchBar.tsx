@@ -26,7 +26,7 @@ export const SearchBar:FC<props> = (props) => {
  useEffect(() => {
   if(props.reactKeyboard){
   Keyboard.addListener("keyboardDidShow",(event) => {setFloatHeight(((event.endCoordinates.height - menuHeight) > 0) ? event.endCoordinates.height - menuHeight : 0)})
-  Keyboard.addListener("keyboardDidHide",(event) => {setFloatHeight(0)})
+  Keyboard.addListener("keyboardDidHide",() => {setFloatHeight(0)})
   }
 
 },[])
