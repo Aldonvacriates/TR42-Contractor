@@ -15,6 +15,8 @@ import { ticketDisplayTitle } from '../utils/ticketLabels';
 import { analyzePhoto, friendlyAIError, PhotoAnalysis } from '../utils/aiClient';
 import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { api } from '../utils/api';
+import PPEChecklistModal from '../components/PPEChecklistModal';
+import { REQUIRED_PPE_IDS } from '../constants/ppe';
 
 function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -37,7 +39,7 @@ export default function TicketDetailScreen() {
   const [taskStatus, setTaskStatus] = useState<'to_do' | 'in_progress' | 'completed'>('to_do');
   const [notes, setNotes] = useState('');
   const [showVerificationModal, setShowVerificationModal] = useState(false);
-  const [verificationStep, setVerificationStep] = useState<'initial' | 'biometric' | 'pin' | 'location' | 'success' | 'error'>('initial');
+  const [verificationStep, setVerificationStep] = useState<'initial' | 'biometric' | 'pin' | 'location' | 'ppe' | 'success' | 'error'>('initial');
   const [pin, setPin] = useState(['', '', '', '', '', '']);
   const [selectedMethod, setSelectedMethod] = useState<'face' | 'fingerprint'>('fingerprint');
   const [scanState, setScanState] = useState<'idle' | 'scanning' | 'failed'>('idle');
@@ -62,6 +64,10 @@ export default function TicketDetailScreen() {
   const [analysisOpen, setAnalysisOpen]   = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const pinRefs = useRef<(TextInput | null)[]>([null, null, null, null, null, null]);
+  // PPE items the contractor confirmed in the checklist modal. Captured in a
+  // ref (not state) so the start-task PUT effect can read the latest value
+  // without re-running on each re-render. Reset by handleStartTask.
+  const ppeItemsRef = useRef<string[]>([]);
 
   // ── Load saved biometric preference ────────────────────────────────────────
   // Reads the preference the user set in ProfileScreen → Settings so the
@@ -130,11 +136,20 @@ export default function TicketDetailScreen() {
         const lng       = accept?.coords?.longitude;
         if (lat == null || lng == null) return;
 
+        // PPE confirmation captured in the modal step before this. Server
+        // requires ppe_confirmed + non-empty ppe_items when transitioning to
+        // IN_PROGRESS; ppe_confirmed_at is informative (server fills if missing).
+        const ppeItems = ppeItemsRef.current.length
+          ? ppeItemsRef.current
+          : [...REQUIRED_PPE_IDS];
         await api.authPut(`/tickets/${taskId}`, {
           status:                       'IN_PROGRESS',
           start_time:                   new Date().toISOString(),
           contractor_start_latitude:    lat,
           contractor_start_longitude:   lng,
+          ppe_confirmed:                true,
+          ppe_confirmed_at:             new Date().toISOString(),
+          ppe_items:                    ppeItems,
         });
       } catch {
         // Non-blocking: backend may already have started this ticket on a
@@ -191,7 +206,10 @@ export default function TicketDetailScreen() {
           }
         }
 
-        setVerificationStep('success');
+        // Location passed -> jump to PPE checklist before flipping the
+        // ticket. The success step (which fires the PUT) is gated behind
+        // PPE confirmation in handlePPEConfirm.
+        setVerificationStep('ppe');
       } catch {
         setErrorMessage('Could not verify your location. Please try again.');
         setVerificationStep('error');
@@ -326,6 +344,16 @@ export default function TicketDetailScreen() {
     setErrorMessage('');
     setScanState('idle');
     setPin(['', '', '', '', '', '']);
+    ppeItemsRef.current = [];
+  };
+
+  // Called by PPEChecklistModal once the contractor has checked every
+  // required item. Stores the confirmed ids in a ref so the success-effect
+  // PUT below can include them in the IN_PROGRESS payload, then advances to
+  // 'success' which actually fires the network call.
+  const handlePPEConfirm = (items: string[]) => {
+    ppeItemsRef.current = items;
+    setVerificationStep('success');
   };
 
   // Shared post-pick logic: append to photo state and capture a geotag
@@ -838,9 +866,11 @@ export default function TicketDetailScreen() {
         )}
       </View>
 
-      {/* ── Verification Modal ── */}
+      {/* ── Verification Modal ──
+          Hidden during the 'ppe' step so PPEChecklistModal (a separate RN
+          Modal) can take over the overlay without two stacked cards. */}
       <Modal
-        visible={showVerificationModal}
+        visible={showVerificationModal && verificationStep !== 'ppe'}
         transparent
         animationType="fade"
         onRequestClose={closeModal}
@@ -1002,6 +1032,22 @@ export default function TicketDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* ── Pre-task PPE checklist ──
+          Renders only between the location-success step and the actual
+          IN_PROGRESS PUT. Confirming all six items advances the verification
+          flow to 'success', which fires the start-task PUT with ppe_items
+          included. Cancelling drops the contractor back to 'initial' so they
+          can re-trigger Start Task. */}
+      <PPEChecklistModal
+        visible={showVerificationModal && verificationStep === 'ppe'}
+        onConfirm={handlePPEConfirm}
+        onCancel={() => {
+          setShowVerificationModal(false);
+          setVerificationStep('initial');
+          ppeItemsRef.current = [];
+        }}
+      />
 
       {/* ── Inline AI photo analysis modal ─────────────────────────────────
           Pops when the user taps the Analyze pill on a photo. Shows the

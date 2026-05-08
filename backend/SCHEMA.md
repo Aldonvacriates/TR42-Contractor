@@ -152,6 +152,9 @@ tickets
   notes                   varchar(500)       nullable
   anomaly_flag            bool               default false
   anomaly_reason          varchar(500)       nullable
+  ppe_confirmed           bool               default false  -- pre-task PPE attestation
+  ppe_confirmed_at        timestamptz        nullable       -- captured at start
+  ppe_items               jsonb              nullable       -- ids of confirmed PPE
 
   created_at              datetime       not null
   updated_at              datetime       nullable

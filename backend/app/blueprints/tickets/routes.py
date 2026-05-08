@@ -62,13 +62,24 @@ def update_ticket(ticket_id):
             if value == "IN_PROGRESS":
                 if ticket.start_time:
                     return jsonify({'error': 'Ticket already started'}), 400
-                
+
                 if "start_time" not in ticket_update_data:
                     return jsonify({'error': 'start_time required when starting'}), 400
                 if "contractor_start_latitude" not in ticket_update_data:
                     return jsonify({'error': 'contractor_start_latitude required when starting'}), 400
                 if "contractor_start_longitude" not in ticket_update_data:
                     return jsonify({'error': 'contractor_start_longitude required when starting'}), 400
+
+                # Pre-task PPE attestation. Required to start; mirrors the
+                # start_time / lat / lng requirements above. ppe_confirmed_at
+                # is optional - server fills with current UTC if the client
+                # didn't supply one.
+                if not ticket_update_data.get("ppe_confirmed"):
+                    return jsonify({'error': 'ppe_confirmed required when starting'}), 400
+                if not ticket_update_data.get("ppe_items"):
+                    return jsonify({'error': 'ppe_items required when starting'}), 400
+                if "ppe_confirmed_at" not in ticket_update_data:
+                    ticket_update_data["ppe_confirmed_at"] = datetime.now(timezone.utc)
 
             elif value == "PENDING_APPROVAL":
                 if not ticket.start_time:

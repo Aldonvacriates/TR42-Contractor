@@ -651,6 +651,29 @@ class Ticket(Base):
     additional_information: Mapped[dict] = mapped_column(JSON, nullable=True)
     route: Mapped[str] = mapped_column(Text, nullable=True)
 
+    # Pre-task PPE attestation. Captured by the contractor in the verification
+    # modal before the IN_PROGRESS transition. ppe_items holds the fixed v1
+    # list of confirmed item ids (hard_hat, vest, gloves, glasses, boots,
+    # hearing) so the showcase can display "what was confirmed" without a
+    # separate audit table.
+    #
+    # Per backend/DATABASE_SAFETY.md, schema changes are owned by Daniel and
+    # applied to shared Supabase via the Studio SQL editor. Ping him before
+    # the PR merges and have him run:
+    #
+    #   ALTER TABLE ticket
+    #     ADD COLUMN IF NOT EXISTS ppe_confirmed     BOOLEAN     NOT NULL DEFAULT FALSE,
+    #     ADD COLUMN IF NOT EXISTS ppe_confirmed_at  TIMESTAMPTZ,
+    #     ADD COLUMN IF NOT EXISTS ppe_items         JSONB;
+    #
+    # Local SQLite dev DBs pick the columns up automatically on next
+    # `db.create_all()` table create (or wipe `backend/instance/app.db` and
+    # restart Flask). db.create_all() does not add columns to existing
+    # tables, so existing local DBs need a manual ALTER or a fresh start.
+    ppe_confirmed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=True)
+    ppe_confirmed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
+    ppe_items: Mapped[dict] = mapped_column(JSON, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[str] = mapped_column(ForeignKey('auth_user.id'), nullable=False)
