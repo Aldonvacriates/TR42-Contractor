@@ -30,7 +30,6 @@ def validate_reset_token(token, user_id):
         if check_password_hash(entry.hashed_token, token) and ensure_utc(entry.expires_at) > datetime.now(timezone.utc):
             # Mark the token as used
             entry.is_used = True
-            db.session.commit()
             return db.session.get(AuthUser, entry.auth_user_id)
 
     return None
@@ -180,7 +179,7 @@ def reset_password():
 
     try:
         user.password_hash = generate_password_hash(new_password)
-        db.session.commit()    
+        db.session.commit()    # commits both new password and the token being marked as used in validate_reset_token
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': 'Password reset failed'}), 500
