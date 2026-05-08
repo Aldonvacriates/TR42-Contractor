@@ -42,6 +42,14 @@ class AuthUserUpdatePasswordSchema(Schema):
     current_password = fields.Str(required=True)
     new_password = fields.Str(required=True)
 
+class AuthUserForgotPasswordSchema(Schema):
+    email = fields.Email(required=True)
+
+class AuthUserResetPasswordSchema(Schema):
+    token = fields.Str(required=True)
+    user_id = fields.Str(required=True)
+    new_password = fields.Str(required=True)
+
 # Offline PIN schema 
 class OfflinePinSchema(Schema):
     pin = fields.Str(required=True)
@@ -53,5 +61,7 @@ login_schema = LoginSchema()
 auth_user_update_schema = AuthUserUpdateSchema()
 
 auth_user_update_password_schema = AuthUserUpdatePasswordSchema()
+auth_user_forgot_password_schema = AuthUserForgotPasswordSchema()
+auth_user_reset_password_schema = AuthUserResetPasswordSchema()
 offline_pin_schema = OfflinePinSchema()
 
