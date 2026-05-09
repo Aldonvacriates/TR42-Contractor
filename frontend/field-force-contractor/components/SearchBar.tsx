@@ -24,20 +24,20 @@ export const SearchBar:FC<props> = (props) => {
  const maxInputHeight = 110;
 
  useEffect(() => {
-  let show;
-  let hide;
+  let show:any;
+  let hide:any;
   if(props.keyboardAware){
 
    show = Keyboard.addListener("keyboardDidShow",(event) => {setFloatHeight(((event.endCoordinates.height - menuHeight) > 0) ? event.endCoordinates.height - menuHeight : 0)})
    hide =  Keyboard.addListener("keyboardDidHide",() => {setFloatHeight(0)})
   }
 
-  return(
+  return() => {
 
-    show?.remove(),
+    show?.remove();
     hide?.remove()
   
-  )
+  }
 },[])
 
     return(<>
