@@ -96,6 +96,15 @@ class AuthUser(Base):
     # Convenience back-refs the existing blueprints rely on.
     contractor = relationship("Contractor", uselist=False, back_populates="auth_user", foreign_keys="Contractor.user_id")
 
+class PasswordResetToken(Base):
+    __tablename__ = 'password_reset_token'
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_uuid)
+    auth_user_id: Mapped[str] = mapped_column(ForeignKey('auth_user.id'), nullable=False)
+    hashed_token: Mapped[str] = mapped_column(String(400), nullable=False, index=True)
+    is_used: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_utcnow, nullable=True)
 
 class Address(Base):
     __tablename__ = 'address'
