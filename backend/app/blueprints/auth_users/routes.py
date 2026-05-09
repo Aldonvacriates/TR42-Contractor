@@ -13,6 +13,12 @@ import resend
 
 resend.api_key = os.getenv('RESEND_API_KEY')
 
+# Resend's noreply@resend.dev sandbox only delivers to the API key owner's
+# verified email, so production needs a verified domain. Keep the sandbox as
+# the default so local dev still works without extra env config.
+RESEND_FROM = os.getenv('RESEND_FROM', 'Field Force <noreply@resend.dev>')
+FRONTEND_RESET_URL = os.getenv('FRONTEND_RESET_URL', 'https://testing.com/reset-password')
+
 def ensure_utc(dt):
     if dt is None:
         return None
@@ -144,11 +150,12 @@ def forgot_password():
             # Send an email to the user with a reset link containing the token.
 
             # Note, this url has a temporary domain and should be updated to the actual frontend domain when available. The frontend will need to extract the token and user_id from the query params and call the reset-password endpoint with them.
+            reset_link = f"{FRONTEND_RESET_URL}?token={token}&id={user.id}"
             params: resend.Emails.SendParams = {
-                "from": "Field Force <noreply@resend.dev>",
+                "from": RESEND_FROM,
                 "to": [email],
                 "subject": "Field Force Password Reset",
-                "html": f"<strong>Please use this link to reset your password:</strong> <a href='https://testing.com/reset-password?token={token}&id={user.id}'>Reset Password</a>",
+                "html": f"<strong>Please use this link to reset your password:</strong> <a href='{reset_link}'>Reset Password</a>",
             }
 
             resend.Emails.send(params)
