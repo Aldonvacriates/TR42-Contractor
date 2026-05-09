@@ -261,14 +261,14 @@ export const Chat:FC = (props) =>{
             loadPreviousAfterHold();
         }
     }
-    const returndemoMessages = (reverseOrder?:boolean) =>{
+    const returnMessages = (reverseOrder?:boolean) =>{
         const currentDate = Trim(TimeFormater.getTimeStamp("LOCAL-DATE",TimeFormater.getTimeStamp("UTC-DATE")))
         const dateLabels = new Set<string>()
         let setLabel = "";
-      const ordereddemoMessages = [...messages].sort(
+      const orderedMessages = [...messages].sort(
         (a, b) => new Date(b.utcTimeStamp).getTime() - new Date(a.utcTimeStamp).getTime()
       );
-      const msgs =  ((reverseOrder) ? ordereddemoMessages: messages).map((item) => {
+      const msgs =  ((reverseOrder) ? orderedMessages: messages).map((item) => {
                
                 const messageDate:string = Trim(TimeFormater.getTimeStamp("LOCAL-DATE",item.utcTimeStamp))
                 
@@ -335,7 +335,7 @@ export const Chat:FC = (props) =>{
             <View style={Styles.Chat.container}>
               
                     {
-                    returndemoMessages(reverseStack)
+                    returnMessages(reverseStack)
                     }
                 
             </View>
