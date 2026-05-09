@@ -71,7 +71,7 @@ export const AppProvider = ({children} : {children:ReactNode}) =>{
    const [devMode,setDevMode] = useState(false);
    const [userInfo,setUserInfo] = useState(getUser("0")); 
    const [client,setClient] = useState<userTable | boolean>(demoClient("1"));
-   const [menuHeight,setMenuHeight] = useState<number>()
+   const [menuHeight,setMenuHeight] = useState<number>(0)
    
     return(
 

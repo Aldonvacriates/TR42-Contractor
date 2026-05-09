@@ -81,8 +81,8 @@ export const Chat:FC = (props) =>{
     let contactuser = getUser(contactId);
     let CONTACTNAME = `${contactuser?.firstName} ${contactuser?.lastName}`
      
-    //Demo Messages database 
-     const Messages =  useRef<TypeMessage[]> ([
+    //Demo demoMessages database 
+     const demoMessages =  useRef<TypeMessage[]> ([
 
         {sessionId:sessionId, id:InitID.getId(),message:"Hello",senderId:userInfo.userid, utcTimeStamp:"2026-03-23T23:28:27.788Z"}, 
         {sessionId:sessionId,id:InitID.getId(),message:"Hello",senderId:contactId, utcTimeStamp:"2026-03-23T23:28:27.788Z"}, 
@@ -115,24 +115,24 @@ export const Chat:FC = (props) =>{
     ])
    
     const {reverseStack} = useContext(AppContext);
-    const [messages,setMessage] = useState(messageSlice(Messages.current,INTIALLOAD));
+    const [messages,setMessage] = useState(messageSlice(demoMessages.current,INTIALLOAD));
     const lastSync = useRef(TimeFormater.getTimeStamp("UTC-DATE"));
-    const messageIds = useRef(new Set(messageSlice(Messages.current,INTIALLOAD).map(item => item.id)));
-    const fromSet = useRef((Messages.current.length >= INTIALLOAD) ? Messages.current.length - INTIALLOAD - MAXPERLOAD : 0);
-    const toSet = useRef(Messages.current.length);
+    const messageIds = useRef(new Set(messageSlice(demoMessages.current,INTIALLOAD).map(item => item.id)));
+    const fromSet = useRef((demoMessages.current.length >= INTIALLOAD) ? demoMessages.current.length - INTIALLOAD - MAXPERLOAD : 0);
+    const toSet = useRef(demoMessages.current.length);
     const [loading,setLoading] = useState(false);
-    const loadingPreviousMessages = useRef(false);
+    const loadingPreviousdemoMessages = useRef(false);
     const lastScrollY = useRef(0);
     const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isAtBottomRef = useRef(false);
     useEffect(() => {
       
    
-           const syncMessages = (messages:TypeMessage[]) =>{
+           const syncdemoMessages = (messages:TypeMessage[]) =>{
             
             const tm = setInterval(() =>{   
                  
-                  const newMessages = messages.filter(t => t.utcTimeStamp >= lastSync.current).filter(p => {
+                  const newdemoMessages = messages.filter(t => t.utcTimeStamp >= lastSync.current).filter(p => {
                     if(!messageIds.current.has(p.id)){
                         messageIds.current.add(p.id)
                         return(true)
@@ -140,8 +140,8 @@ export const Chat:FC = (props) =>{
                     return(false)          
                 })
                   lastSync.current = TimeFormater.getTimeStamp("UTC-DATE")
-                  if(newMessages.length > 0){
-                    setMessage(prev => [...prev,...newMessages])  
+                  if(newdemoMessages.length > 0){
+                    setMessage(prev => [...prev,...newdemoMessages])  
                     
                   
                   }       
@@ -149,7 +149,7 @@ export const Chat:FC = (props) =>{
                     },CheckMsg)
                     return(tm)
                 }
-               const tm = syncMessages(Messages.current);
+               const tm = syncdemoMessages(demoMessages.current);
         return () => {
            
             clearInterval(tm);
@@ -219,35 +219,35 @@ export const Chat:FC = (props) =>{
             clearTimeout(holdTimer.current);
             holdTimer.current = null;
         }
-        if(!loadingPreviousMessages.current){
+        if(!loadingPreviousdemoMessages.current){
             setLoading(false);
         }
     }
     const loadPreviousAfterHold = () =>{
-        if(holdTimer.current || loadingPreviousMessages.current){
+        if(holdTimer.current || loadingPreviousdemoMessages.current){
             return;
         }
 
         setLoading(true);
         holdTimer.current = setTimeout(async () =>{
             holdTimer.current = null;
-            if(loadingPreviousMessages.current || fromSet.current >= toSet.current){
+            if(loadingPreviousdemoMessages.current || fromSet.current >= toSet.current){
                 setLoading(false);
                 return;
             }
 
-            loadingPreviousMessages.current = true;
+            loadingPreviousdemoMessages.current = true;
             setLoading(true);
             try{
-                await previousMessages(Messages.current,1000);
+                await previousMessages(demoMessages.current,1000);
             }
             finally{
                 setLoading(false);
-                loadingPreviousMessages.current = false;
+                loadingPreviousdemoMessages.current = false;
             }
         }, LOAD_PREVIOUS_HOLD_TIME);
     }
-    const hasPreviousMessages = () =>{
+    const hasPreviousdemoMessages = () =>{
         return(fromSet.current < toSet.current);
     }
     const updateBottomState = (metrics?:ScrollMetrics) =>{
@@ -256,19 +256,19 @@ export const Chat:FC = (props) =>{
         }
         return(isAtBottomRef.current);
     }
-    const startPreviousMessagesHold = (metrics?:ScrollMetrics) =>{
-        if(updateBottomState(metrics) && hasPreviousMessages() && !loadingPreviousMessages.current){
+    const startPreviousdemoMessagesHold = (metrics?:ScrollMetrics) =>{
+        if(updateBottomState(metrics) && hasPreviousdemoMessages() && !loadingPreviousdemoMessages.current){
             loadPreviousAfterHold();
         }
     }
-    const returnMessages = (reverseOrder?:boolean) =>{
+    const returndemoMessages = (reverseOrder?:boolean) =>{
         const currentDate = Trim(TimeFormater.getTimeStamp("LOCAL-DATE",TimeFormater.getTimeStamp("UTC-DATE")))
         const dateLabels = new Set<string>()
         let setLabel = "";
-      const orderedMessages = [...messages].sort(
+      const ordereddemoMessages = [...messages].sort(
         (a, b) => new Date(b.utcTimeStamp).getTime() - new Date(a.utcTimeStamp).getTime()
       );
-      const msgs =  ((reverseOrder) ? orderedMessages: messages).map((item) => {
+      const msgs =  ((reverseOrder) ? ordereddemoMessages: messages).map((item) => {
                
                 const messageDate:string = Trim(TimeFormater.getTimeStamp("LOCAL-DATE",item.utcTimeStamp))
                 
@@ -306,16 +306,16 @@ export const Chat:FC = (props) =>{
          const isDraggingUp = movement > LOAD_PREVIOUS_DRAG_DISTANCE || scrollDelta > 0;
          if(reverseStack === true){
             if(isAtBottomRef.current && isDraggingUp){
-            startPreviousMessagesHold(metrics);
+            startPreviousdemoMessagesHold(metrics);
             }
-            else if(!isAtBottomRef.current || !hasPreviousMessages()){
+            else if(!isAtBottomRef.current || !hasPreviousdemoMessages()){
             clearHoldTimer();
             }
         }
     }
     const movement = (movement = 0,metrics?:ScrollMetrics) =>{
         if(movement > LOAD_PREVIOUS_DRAG_DISTANCE){
-            startPreviousMessagesHold(metrics);
+            startPreviousdemoMessagesHold(metrics);
         }
         else{
             clearHoldTimer();
@@ -328,14 +328,14 @@ export const Chat:FC = (props) =>{
         {loading && <View style={Styles.Chat.loadingContainer}>
                 <Image source={Assets.logos.loading} style={Styles.Chat.loading}/>
             </View>}
-        <SearchBar placeHolder="Message..." buttonText="Send" multiline onClick={(msg:string)=>{(msg) && SendMessage(msg)}} resetOnSubmit={true} reactKeyboard={true}/>
+        <SearchBar placeHolder="Message..." buttonText="Send" multiline onClick={(msg:string)=>{(msg) && SendMessage(msg)}} resetOnSubmit={true} keyboardAware={true}/>
         </>
-        } onRefresh={() => {if(reverseStack === false) {previousMessages(Messages.current,2000)}}} onScroll={(event:any,touch?:number,movement?:number,metrics?:ScrollMetrics) => {scroll(event,touch,movement,metrics)}} onMovement={(move:number,metrics?:ScrollMetrics) => {movement(move,metrics)}} onTouchEnd={() => {clearHoldTimer()}}>
+        } onRefresh={() => {if(reverseStack === false) {previousMessages(demoMessages.current,2000)}}} onScroll={(event:any,touch?:number,movement?:number,metrics?:ScrollMetrics) => {scroll(event,touch,movement,metrics)}} onMovement={(move:number,metrics?:ScrollMetrics) => {movement(move,metrics)}} onTouchEnd={() => {clearHoldTimer()}}>
         
             <View style={Styles.Chat.container}>
               
                     {
-                    returnMessages(reverseStack)
+                    returndemoMessages(reverseStack)
                     }
                 
             </View>

@@ -11,7 +11,7 @@ type props = {
     multiline?: boolean
     onClick:Function
     resetOnSubmit?:Boolean
-    reactKeyboard?:Boolean
+    keyboardAware?:Boolean
 }
 
 export const SearchBar:FC<props> = (props) => {
@@ -24,11 +24,20 @@ export const SearchBar:FC<props> = (props) => {
  const maxInputHeight = 110;
 
  useEffect(() => {
-  if(props.reactKeyboard){
-  Keyboard.addListener("keyboardDidShow",(event) => {setFloatHeight(((event.endCoordinates.height - menuHeight) > 0) ? event.endCoordinates.height - menuHeight : 0)})
-  Keyboard.addListener("keyboardDidHide",() => {setFloatHeight(0)})
+  let show;
+  let hide;
+  if(props.keyboardAware){
+
+   show = Keyboard.addListener("keyboardDidShow",(event) => {setFloatHeight(((event.endCoordinates.height - menuHeight) > 0) ? event.endCoordinates.height - menuHeight : 0)})
+   hide =  Keyboard.addListener("keyboardDidHide",() => {setFloatHeight(0)})
   }
 
+  return(
+
+    show?.remove(),
+    hide?.remove()
+  
+  )
 },[])
 
     return(<>
