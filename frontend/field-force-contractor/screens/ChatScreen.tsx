@@ -121,14 +121,14 @@ export const Chat:FC = (props) =>{
     const fromSet = useRef((demoMessages.current.length >= INTIALLOAD) ? demoMessages.current.length - INTIALLOAD - MAXPERLOAD : 0);
     const toSet = useRef(demoMessages.current.length);
     const [loading,setLoading] = useState(false);
-    const loadingPreviousdemoMessages = useRef(false);
+    const loadingPreviousMessages = useRef(false);
     const lastScrollY = useRef(0);
     const holdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isAtBottomRef = useRef(false);
     useEffect(() => {
       
    
-           const syncdemoMessages = (messages:TypeMessage[]) =>{
+           const syncMessages = (messages:TypeMessage[]) =>{
             
             const tm = setInterval(() =>{   
                  
@@ -149,7 +149,7 @@ export const Chat:FC = (props) =>{
                     },CheckMsg)
                     return(tm)
                 }
-               const tm = syncdemoMessages(demoMessages.current);
+               const tm = syncMessages(demoMessages.current);
         return () => {
            
             clearInterval(tm);
@@ -219,35 +219,35 @@ export const Chat:FC = (props) =>{
             clearTimeout(holdTimer.current);
             holdTimer.current = null;
         }
-        if(!loadingPreviousdemoMessages.current){
+        if(!loadingPreviousMessages.current){
             setLoading(false);
         }
     }
     const loadPreviousAfterHold = () =>{
-        if(holdTimer.current || loadingPreviousdemoMessages.current){
+        if(holdTimer.current || loadingPreviousMessages.current){
             return;
         }
 
         setLoading(true);
         holdTimer.current = setTimeout(async () =>{
             holdTimer.current = null;
-            if(loadingPreviousdemoMessages.current || fromSet.current >= toSet.current){
+            if(loadingPreviousMessages.current || fromSet.current >= toSet.current){
                 setLoading(false);
                 return;
             }
 
-            loadingPreviousdemoMessages.current = true;
+            loadingPreviousMessages.current = true;
             setLoading(true);
             try{
                 await previousMessages(demoMessages.current,1000);
             }
             finally{
                 setLoading(false);
-                loadingPreviousdemoMessages.current = false;
+                loadingPreviousMessages.current = false;
             }
         }, LOAD_PREVIOUS_HOLD_TIME);
     }
-    const hasPreviousdemoMessages = () =>{
+    const hasPreviousMessages = () =>{
         return(fromSet.current < toSet.current);
     }
     const updateBottomState = (metrics?:ScrollMetrics) =>{
@@ -256,8 +256,8 @@ export const Chat:FC = (props) =>{
         }
         return(isAtBottomRef.current);
     }
-    const startPreviousdemoMessagesHold = (metrics?:ScrollMetrics) =>{
-        if(updateBottomState(metrics) && hasPreviousdemoMessages() && !loadingPreviousdemoMessages.current){
+    const startPreviousMessagesHold = (metrics?:ScrollMetrics) =>{
+        if(updateBottomState(metrics) && hasPreviousMessages() && !loadingPreviousMessages.current){
             loadPreviousAfterHold();
         }
     }
@@ -306,16 +306,16 @@ export const Chat:FC = (props) =>{
          const isDraggingUp = movement > LOAD_PREVIOUS_DRAG_DISTANCE || scrollDelta > 0;
          if(reverseStack === true){
             if(isAtBottomRef.current && isDraggingUp){
-            startPreviousdemoMessagesHold(metrics);
+            startPreviousMessagesHold(metrics);
             }
-            else if(!isAtBottomRef.current || !hasPreviousdemoMessages()){
+            else if(!isAtBottomRef.current || !hasPreviousMessages()){
             clearHoldTimer();
             }
         }
     }
     const movement = (movement = 0,metrics?:ScrollMetrics) =>{
         if(movement > LOAD_PREVIOUS_DRAG_DISTANCE){
-            startPreviousdemoMessagesHold(metrics);
+            startPreviousMessagesHold(metrics);
         }
         else{
             clearHoldTimer();
