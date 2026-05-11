@@ -26,7 +26,7 @@ export const SearchBar:FC<props> = (props) => {
  useEffect(() => {
   let show:any;
   let hide:any;
-  if(props.keyboardAware){
+  if(props.keyboardAware && menuHeight > 0){
 
    show = Keyboard.addListener("keyboardDidShow",(event) => {setFloatHeight(((event.endCoordinates.height - menuHeight) > 0) ? event.endCoordinates.height - menuHeight : 0)})
    hide =  Keyboard.addListener("keyboardDidHide",() => {setFloatHeight(0)})
@@ -38,7 +38,7 @@ export const SearchBar:FC<props> = (props) => {
     hide?.remove()
   
   }
-},[])
+},[menuHeight])
 
     return(<>
      

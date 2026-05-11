@@ -132,7 +132,7 @@ export const Chat:FC = (props) =>{
             
             const tm = setInterval(() =>{   
                  
-                  const newdemoMessages = messages.filter(t => t.utcTimeStamp >= lastSync.current).filter(p => {
+                  const newMessages = messages.filter(t => t.utcTimeStamp >= lastSync.current).filter(p => {
                     if(!messageIds.current.has(p.id)){
                         messageIds.current.add(p.id)
                         return(true)
@@ -140,8 +140,8 @@ export const Chat:FC = (props) =>{
                     return(false)          
                 })
                   lastSync.current = TimeFormater.getTimeStamp("UTC-DATE")
-                  if(newdemoMessages.length > 0){
-                    setMessage(prev => [...prev,...newdemoMessages])  
+                  if(newMessages.length > 0){
+                    setMessage(prev => [...prev,...newMessages])  
                     
                   
                   }       
