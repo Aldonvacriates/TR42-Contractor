@@ -105,12 +105,24 @@ export default function TicketsScreen() {
 
       {/* Header */}
       <View style={styles.section}>
-        <Text style={styles.title}>Tickets</Text>
-        <Text style={styles.subtitle}>
-          {loading
-            ? 'Loading...'
-            : `${action.length} action needed · ${inProgress.length} in progress · ${pending.length} pending approval`}
-        </Text>
+        <View style={styles.headerRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>Tickets</Text>
+            <Text style={styles.subtitle}>
+              {loading
+                ? 'Loading...'
+                : `${action.length} action needed · ${inProgress.length} in progress · ${pending.length} pending approval`}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.mapBtn}
+            onPress={() => navigation.navigate('TicketsMap' as never)}
+            accessibilityLabel="Open tickets map"
+          >
+            <Ionicons name="map" size={16} color="white" />
+            <Text style={styles.mapBtnText}>Map</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {error && (
@@ -226,8 +238,21 @@ const BORDER  = 'rgba(255,255,255,0.15)';
 
 const styles = StyleSheet.create({
     section:       { width: '90%', marginBottom: 16 },
+    headerRow:     { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
     title:         { fontSize: 22, fontFamily: 'poppins-bold', color: 'white', marginBottom: 4 },
     subtitle:      { fontSize: 13, color: '#9ca3af' },
+    mapBtn: {
+      flexDirection: 'row',
+      alignItems:    'center',
+      gap:           6,
+      paddingHorizontal: 12,
+      paddingVertical:   8,
+      borderRadius:  999,
+      backgroundColor: 'rgba(59,130,246,0.18)',
+      borderWidth:   1,
+      borderColor:   'rgba(59,130,246,0.45)',
+    },
+    mapBtnText:    { color: 'white', fontSize: 12, fontFamily: 'poppins-bold' },
     sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
     sectionTitle:  { fontSize: 13, fontFamily: 'poppins-bold', color: 'white', marginBottom: 8 },
     taskCard: {

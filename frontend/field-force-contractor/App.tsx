@@ -24,11 +24,13 @@ import HomeScreen from "./screens/HomeScreen";
 import { InspectionAssistScreen } from "./screens/InspectionAssistScreen";
 import { ChatAssistantScreen } from "./screens/ChatAssistantScreen";
 import { PhotoReviewScreen } from "./screens/PhotoReviewScreen";
+import IncidentReportScreen from "./screens/IncidentReportScreen";
 import InspectionScreen from "./screens/InspectionScreen";
 import { SavedReportsScreen } from "./screens/SavedReportsScreen";
 import { SplashScreen } from "./screens/SplashScreen";
 import TicketDetailScreen from "./screens/TicketDetailScreen";
 import TicketsScreen from "./screens/TicketsScreen";
+import MapScreen from "./screens/MapScreen";
 
 // ── TROY — Auth screens ──────────────────────────────────────
 import BiometricScreen from "./screens/BiometricScreen";
@@ -59,6 +61,7 @@ export type RootStackParamList = {
   Chat: { name: string; contactId?: string };
   Tickets: undefined;
   TicketDetail: { taskId: number; inspectionDone?: boolean };
+  TicketsMap: undefined;
 
   // ── Jonathan — Work Orders (placeholder until real screen built) ──
   JobDetail: { jobId: string; workOrderId: string };
@@ -94,6 +97,7 @@ export type RootStackParamList = {
   InspectionAssist: undefined;
   ChatAssistant: undefined;
   PhotoReview: undefined;
+  IncidentReport: undefined;
   DriveTimeTracker: undefined;
 
   // ── Aldo — Saved Reports ─────────────────────────────────────
@@ -142,12 +146,14 @@ function RootNavigator() {
           <StackNavigator.Screen name="Chat"             component={Chat}                    />
           <StackNavigator.Screen name="Tickets"          component={TicketsScreen}           />
           <StackNavigator.Screen name="TicketDetail"     component={TicketDetailScreen}      />
+          <StackNavigator.Screen name="TicketsMap"       component={MapScreen}               />
           <StackNavigator.Screen name="Profile"          component={ProfileScreen}           />
           <StackNavigator.Screen name="LicenseDetails"   component={LicenseScreen}           />
           <StackNavigator.Screen name="TaskHistory"      component={TaskHistoryScreen}       />
           <StackNavigator.Screen name="InspectionAssist" component={InspectionAssistScreen}  />
           <StackNavigator.Screen name="ChatAssistant"    component={ChatAssistantScreen}     />
           <StackNavigator.Screen name="PhotoReview"      component={PhotoReviewScreen}       />
+          <StackNavigator.Screen name="IncidentReport"   component={IncidentReportScreen}    />
           <StackNavigator.Screen name="DriveTimeTracker" component={DriveTimeTrackerScreen}  />
           <StackNavigator.Screen name="SavedReports"     component={SavedReportsScreen}      />     
           <StackNavigator.Screen name="Login"           component={LoginScreen}           />

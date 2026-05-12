@@ -146,12 +146,15 @@ export const Styles = {
    chatIcon:{width:35,height:35,marginRight:5,marginLeft:5},
    dateMarker:{fontFamily:DefaultFont,color:DefaultColor,fontSize:15, marginLeft:15, marginRight:15,textAlign:"center"},
    loading:{width:35,height:35},
-   loadingContainer:{width:"100%",justifyContent:"center",alignItems:"center",paddingVertical: 20,alignSelf: "stretch"}
+   loadingContainer:{width:"100%",justifyContent:"center",alignItems:"center",paddingVertical: 20,alignSelf: "stretch"},
+   floatBox:{width:"100%",height:0, opacity:0},
   }),
+
   ProfileIcon: StyleSheet.create({
   icon:{width:"100%", height:"100%", backgroundColor:"#007bff49", borderRadius:100, borderColor:"#828282",borderStyle:"solid", borderWidth:1, justifyContent:"center", alignItems:"center"},
   iconText:{color:DefaultColor, fontFamily:DefaultFont, fontSize:16, fontWeight:"bold"},
-  Default:{width:"100%",height:"100%"}
+  Default:{width:"100%",height:"100%"},
+ 
 
   })
 };

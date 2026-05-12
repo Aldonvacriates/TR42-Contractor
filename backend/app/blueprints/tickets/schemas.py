@@ -1,14 +1,23 @@
 from marshmallow_sqlalchemy import auto_field
 
 from app.extensions import ma
-from app.models import Ticket
+from app.models import Ticket, Work_order
 from marshmallow import fields, Schema, validate
+
+
+class WorkOrderLiteSchema(ma.SQLAlchemyAutoSchema):
+    class Meta:
+        model = Work_order
+        fields = ("id", "latitude", "longitude", "location", "location_type")
+
 
 class TicketSchema(ma.SQLAlchemyAutoSchema):
     class Meta:
         model = Ticket
         include_fk = True
     id = auto_field(dump_only=True)
+    work_order = fields.Nested(WorkOrderLiteSchema, dump_only=True)
+
 
 class TicketUpdateSchema(Schema):
     notes = fields.Str(required=False)

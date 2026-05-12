@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Alert, ActivityIndicator, Linking, Image } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
 import { uploadPhotoOrEnqueue } from '../utils/photoOutbox';
+import { SignatureModal } from '../components/SignatureModal';
 import { useNetwork } from '../contexts/NetworkContext';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -63,6 +65,13 @@ export default function TicketDetailScreen() {
   const [analyzingUri, setAnalyzingUri]   = useState<string | null>(null);
   const [analysisOpen, setAnalysisOpen]   = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
+
+  // Signature capture: opened by Complete Task, closed once the contractor
+  // saves a signature. signatureUri is the on-disk PNG that gets enqueued
+  // alongside the regular ticket photos.
+  const [signatureModalOpen, setSignatureModalOpen] = useState(false);
+  const [signatureUri, setSignatureUri] = useState<string | null>(null);
+
   const pinRefs = useRef<(TextInput | null)[]>([null, null, null, null, null, null]);
   // PPE items the contractor confirmed in the checklist modal. Captured in a
   // ref (not state) so the start-task PUT effect can read the latest value
@@ -505,11 +514,45 @@ export default function TicketDetailScreen() {
     return { sent, queued };
   };
 
-  const handleCompleteTask = async () => {
-    try {
-      const savedAccept = await AsyncStorage.getItem(`accept_location_${taskId}`);
-      const acceptLoc = savedAccept ? JSON.parse(savedAccept) : null;
+  // Signature capture flow:
+  //   1. Contractor taps "Complete Task" -> handleCompleteTask gates on
+  //      signatureUri. If absent, opens the modal and bails.
+  //   2. Modal calls handleSignatureConfirmed(dataUrl) on Save.
+  //      We strip the "data:image/png;base64," prefix, write to disk under
+  //      documentDirectory so the URI survives ImagePicker cache eviction,
+  //      then re-enter submitCompletion with the now-non-null signatureUri.
+  //   3. submitCompletion enqueues the signature alongside the regular
+  //      photos via the existing photoOutbox so durability + offline retry
+  //      are inherited for free.
 
+  const handleSignatureConfirmed = async (dataUrl: string) => {
+    setSignatureModalOpen(false);
+    try {
+      // signature-canvas yields "data:image/png;base64,...". Strip prefix
+      // before writing because writeAsStringAsync expects pure base64.
+      const base64 = dataUrl.replace(/^data:image\/[a-z]+;base64,/, '');
+      const dest = `${FileSystem.documentDirectory ?? ''}signature_${taskId}_${Date.now()}.png`;
+      await FileSystem.writeAsStringAsync(dest, base64, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+      setSignatureUri(dest);
+      // Re-enter the completion flow now that we have a signature on disk.
+      submitCompletion(dest);
+    } catch (e: any) {
+      Alert.alert('Signature error', e?.message ?? 'Could not save the signature. Please try again.');
+    }
+  };
+
+  const handleCompleteTask = async () => {
+    if (!signatureUri) {
+      setSignatureModalOpen(true);
+      return;
+    }
+    submitCompletion(signatureUri);
+  };
+
+  const submitCompletion = async (sigUri: string) => {
+    try {
       let endCoords = null;
       try {
         const endLoc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
@@ -539,8 +582,13 @@ export default function TicketDetailScreen() {
       // TODO: queue for offline retry when sync manager is built
     }
 
-    if (photoUris.length > 0) {
-      const { sent, queued } = await uploadPhotos(task.id, photoUris);
+    // Build the final photo list: real photos first, signature last so the
+    // approver sees site evidence followed by the contractor's sign-off.
+    // Both ride the same outbox; signature filename pattern keeps it
+    // distinguishable on the backend.
+    const allPhotos = [...photoUris, sigUri];
+    if (allPhotos.length > 0) {
+      const { sent, queued } = await uploadPhotos(task.id, allPhotos);
       if (queued > 0) {
         Alert.alert(
           'Photos queued',
@@ -858,9 +906,17 @@ export default function TicketDetailScreen() {
               onPress={handleCompleteTask}
               disabled={task.photosSubmitted < task.photosRequired}
             >
-              <Ionicons name="checkmark-circle" size={20} color={task.photosSubmitted >= task.photosRequired ? 'white' : '#ff8c00'} />
+              <Ionicons
+                name={signatureUri ? 'checkmark-circle' : 'create-outline'}
+                size={20}
+                color={task.photosSubmitted >= task.photosRequired ? 'white' : '#ff8c00'}
+              />
               <Text style={task.photosSubmitted >= task.photosRequired ? styles.btnText : styles.btnOutlineText}>
-                {task.photosSubmitted >= task.photosRequired ? 'Complete Task' : `Need ${task.photosRequired - task.photosSubmitted} more photo(s)`}
+                {task.photosSubmitted < task.photosRequired
+                  ? `Need ${task.photosRequired - task.photosSubmitted} more photo(s)`
+                  : signatureUri
+                    ? 'Complete Task'
+                    : 'Sign & complete'}
               </Text>
             </TouchableOpacity>
         )}
@@ -1166,6 +1222,13 @@ export default function TicketDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      <SignatureModal
+        visible={signatureModalOpen}
+        onCancel={() => setSignatureModalOpen(false)}
+        onConfirm={handleSignatureConfirmed}
+        signerName={ticketData?.assigned_contractor_name ?? undefined}
+      />
 
     </MainFrame>
   );
