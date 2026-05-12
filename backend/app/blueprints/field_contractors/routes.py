@@ -1,8 +1,8 @@
 from flask import request, jsonify
-from app.models import AuthUser, Contractor, Ticket, Address, License, db
+from app.models import AuthUser, Contractor, Ticket, Address, License, Client, Vendor, Work_order, db
 from .schemas import contractor_register_schema, contractor_schema, contractor_update_schema
 from ..auth_users.schemas import auth_user_update_schema, auth_user_create_schema
-from ..tickets.schemas import tickets_schema
+from ..tickets.schemas import tickets_schema, ticket_schema
 from marshmallow import ValidationError
 from werkzeug.security import generate_password_hash, check_password_hash
 from . import field_contractors_bp
@@ -182,11 +182,38 @@ def get_assigned_tickets():
 
     try:
         contractor = db.session.query(Contractor).filter(Contractor.user_id == user_id).first()
+        if not contractor:
+            return jsonify([]), 200
 
         tickets = db.session.query(Ticket).filter(Ticket.assigned_contractor == contractor.id).all()
-        return tickets_schema.jsonify(tickets), 200
+
+        # Hand-rolled response: dump each ticket via the existing marshmallow
+        # schema, then augment with site coords from work_order and primary
+        # contact rows from client + vendor. Frontend TicketDetailScreen
+        # surfaces these as the map pin and the Point-of-Contact card so the
+        # contractor doesn't have to leave the screen to look someone up.
+        out = []
+        for t in tickets:
+            row = ticket_schema.dump(t)
+            wo = db.session.get(Work_order, t.work_order_id) if t.work_order_id else None
+            client = db.session.get(Client, wo.client_id) if (wo and wo.client_id) else None
+            vendor = db.session.get(Vendor, t.vendor_id) if t.vendor_id else None
+            if wo:
+                row['site_latitude']  = float(wo.latitude)  if wo.latitude  is not None else None
+                row['site_longitude'] = float(wo.longitude) if wo.longitude is not None else None
+                row['site_location']  = wo.location or row.get('route')
+            if client:
+                row['client_contact_name']  = client.primary_contact_name
+                row['client_contact_phone'] = client.company_phone
+                row['client_name']          = client.client_name
+            if vendor:
+                row['vendor_contact_name']  = vendor.primary_contact_name
+                row['vendor_contact_phone'] = vendor.company_phone
+                row['vendor_name']          = vendor.company_name
+            out.append(row)
+        return jsonify(out), 200
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve tickets'}), 500
+        return jsonify({'error': 'Failed to retrieve tickets', 'detail': str(e)}), 500
 
 
 # ── Licenses for the authenticated contractor ───────────────────────────────
@@ -229,3 +256,89 @@ def get_my_licenses():
     ]
 
     return jsonify({'licenses': payload, 'count': len(payload)}), 200
+
+
+# ── Contacts list ────────────────────────────────────────────────────────────
+# Powers the Contacts screen. Returns a single flat list combining:
+#   1. Active auth_user rows with a phone number on file (the team / other
+#      contractors / dispatchers a contractor can call directly).
+#   2. The primary contact rows from each Client and Vendor that the
+#      authenticated contractor has touched via assigned tickets, so the
+#      list reflects the real people behind the work orders rather than a
+#      static demo set.
+# Self is excluded so the list reads as "people I can contact".
+@field_contractors_bp.route('/contacts', methods=['GET'])
+@token_required
+def get_contacts():
+    user_id = request.user_id
+
+    try:
+        contractor = (
+            db.session.query(Contractor)
+            .filter(Contractor.user_id == user_id)
+            .first()
+        )
+
+        contacts = []
+
+        users = (
+            db.session.query(AuthUser)
+            .filter(AuthUser.is_active == True)
+            .filter(AuthUser.id != user_id)
+            .filter(AuthUser.contact_number.isnot(None))
+            .all()
+        )
+        for u in users:
+            phone = (u.contact_number or '').strip()
+            if not phone:
+                continue
+            contacts.append({
+                'id':         u.id,
+                'first_name': u.first_name or '',
+                'last_name':  u.last_name or '',
+                'phone':      phone,
+                'email':      u.email or '',
+                'role':       u.user_type or '',
+                'source':     'user',
+            })
+
+        if contractor:
+            seen_vendor_ids = set()
+            seen_client_ids = set()
+            tickets = (
+                db.session.query(Ticket)
+                .filter(Ticket.assigned_contractor == contractor.id)
+                .all()
+            )
+            for t in tickets:
+                if t.vendor_id and t.vendor_id not in seen_vendor_ids:
+                    seen_vendor_ids.add(t.vendor_id)
+                    v = db.session.get(Vendor, t.vendor_id)
+                    if v and v.primary_contact_name and v.company_phone:
+                        contacts.append({
+                            'id':         f'vendor-{v.id}',
+                            'first_name': v.primary_contact_name,
+                            'last_name':  f'({v.company_name})',
+                            'phone':      v.company_phone,
+                            'email':      v.company_email or '',
+                            'role':       'vendor',
+                            'source':     'vendor',
+                        })
+                wo = db.session.get(Work_order, t.work_order_id) if t.work_order_id else None
+                if wo and wo.client_id and wo.client_id not in seen_client_ids:
+                    seen_client_ids.add(wo.client_id)
+                    c = db.session.get(Client, wo.client_id)
+                    if c and c.primary_contact_name and c.company_phone:
+                        contacts.append({
+                            'id':         f'client-{c.id}',
+                            'first_name': c.primary_contact_name,
+                            'last_name':  f'({c.client_name})',
+                            'phone':      c.company_phone,
+                            'email':      c.company_email or '',
+                            'role':       'client',
+                            'source':     'client',
+                        })
+
+        return jsonify({'contacts': contacts, 'count': len(contacts)}), 200
+    except Exception as e:
+        return jsonify({'error': 'Failed to retrieve contacts', 'detail': str(e)}), 500

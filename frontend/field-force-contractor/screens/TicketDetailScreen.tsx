@@ -19,6 +19,7 @@ import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-spe
 import { api } from '../utils/api';
 import PPEChecklistModal from '../components/PPEChecklistModal';
 import { REQUIRED_PPE_IDS } from '../constants/ppe';
+import { SHOWCASE_MODE } from '../constants/showcase';
 
 function getDistanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000;
@@ -77,6 +78,12 @@ export default function TicketDetailScreen() {
   // ref (not state) so the start-task PUT effect can read the latest value
   // without re-running on each re-render. Reset by handleStartTask.
   const ppeItemsRef = useRef<string[]>([]);
+
+  // SHOWCASE_MODE: first Start Task tap surfaces the proximity error so the
+  // audience sees the gate exists; second tap bypasses the whole verification
+  // chain. Per-mount counter, so navigating away and back resets for a fresh
+  // demo. See constants/showcase.ts and DEMO_REVERT.md.
+  const startAttempts = useRef(0);
 
   // ── Load saved biometric preference ────────────────────────────────────────
   // Reads the preference the user set in ProfileScreen → Settings so the
@@ -257,23 +264,38 @@ export default function TicketDetailScreen() {
       });
     } catch { return iso ?? 'No deadline set'; }
   };
+  // Resolve POC from the JOIN the backend now provides on
+  // /contractors/assigned-tickets. Client primary contact wins; vendor
+  // primary contact is the fallback; demo placeholder only if neither
+  // exists (backend not extended yet, or row missing in shared DB).
+  const pocName =
+    ticketData?.client_contact_name ||
+    ticketData?.vendor_contact_name ||
+    'John Martinez';
+  const pocPhone =
+    ticketData?.client_contact_phone ||
+    ticketData?.vendor_contact_phone ||
+    '+1 (555) 012-3456';
+
+  // Site coords come from the linked work_order. Falls back to a SF
+  // pin if the backend hasn't populated the row, so the map link still
+  // works in early dev.
+  const siteLat =
+    typeof ticketData?.site_latitude === 'number' ? ticketData.site_latitude : 37.7749;
+  const siteLng =
+    typeof ticketData?.site_longitude === 'number' ? ticketData.site_longitude : -122.4194;
+
   const task = {
     id:          ticketData?.id ?? taskId,
     title:       ticketData ? ticketDisplayTitle(ticketData) : 'Loading task...',
     deadline:    ticketData ? fmtDeadline(ticketData.due_date) : '',
-    // Backend schema doesn't currently surface a human-readable address.
-    // The `route` field on the ticket is a free-text description used by
-    // the dispatcher; we show it in the location slot for now and fall
-    // back to a placeholder if absent. work_order.location would be the
-    // proper source once the schema is extended.
-    location:        ticketData?.route || '1234 Main Street, San Francisco, CA 94102',
-    locationCoords:  { lat: 37.7749, lng: -122.4194 },
+    // Prefer the human-readable work_order.location, fall back to the
+    // ticket.route free-text the dispatcher set, then a placeholder.
+    location:        ticketData?.site_location || ticketData?.route || '1234 Main Street, San Francisco, CA 94102',
+    locationCoords:  { lat: siteLat, lng: siteLng },
     inspectionRequired: false,
     description:     ticketData?.description || 'Loading task description...',
-    // pointOfContact is not yet a backend field on `ticket`. Placeholder
-    // keeps the UI populated; a future ticket↔auth_user POC join will
-    // replace this.
-    pointOfContact:  { name: 'John Martinez', phone: '+1 (555) 012-3456' },
+    pointOfContact:  { name: pocName, phone: pocPhone },
     photosRequired:  1,
     photosMax:       5,
     photosSubmitted: photoUris.length,
@@ -346,6 +368,40 @@ export default function TicketDetailScreen() {
   };
 
   const handleStartTask = () => {
+    // SHOWCASE_MODE bypass: skip the biometric / PIN / location / PPE chain
+    // so the demo flow runs without real GPS or biometric hardware. First
+    // tap shows the proximity Alert so the audience sees the gate; second
+    // tap bypasses to in_progress. See constants/showcase.ts and
+    // DEMO_REVERT.md. Production path is below.
+    if (SHOWCASE_MODE) {
+      startAttempts.current += 1;
+      if (startAttempts.current === 1) {
+        Alert.alert(
+          'Too far from job site',
+          'You must be within 100 feet of the site to start this task. ' +
+          'Tap Start Task again once you arrive.',
+          [{ text: 'OK' }],
+        );
+        return;
+      }
+      setTaskStatus('in_progress');
+      // Fire-and-forget the backend transition so a Tickets list refresh
+      // reflects the new status. Uses the task's known site coordinates
+      // as the demo start location since the real GPS check is skipped.
+      // ppe_confirmed + ppe_items are required by the schema on the
+      // IN_PROGRESS transition, so we pass the canonical REQUIRED_PPE_IDS
+      // set as the demo's "implicit" confirmation.
+      api.authPut(`/tickets/${taskId}`, {
+        status:                     'IN_PROGRESS',
+        start_time:                 new Date().toISOString(),
+        contractor_start_latitude:  task.locationCoords.lat,
+        contractor_start_longitude: task.locationCoords.lng,
+        ppe_confirmed:              true,
+        ppe_confirmed_at:           new Date().toISOString(),
+        ppe_items:                  [...REQUIRED_PPE_IDS],
+      }).catch(() => {});
+      return;
+    }
     // Reset everything so a previous failed attempt doesn't leak state into
     // this fresh verification flow.
     setShowVerificationModal(true);
@@ -696,6 +752,13 @@ export default function TicketDetailScreen() {
   };
 
   const handleAcceptTask = async () => {
+    // SHOWCASE_MODE bypass: skip the inspection forced-nav and the GPS
+    // permission prompt so the demo flow runs without OS dialogs. See
+    // constants/showcase.ts and DEMO_REVERT.md. Production path is below.
+    if (SHOWCASE_MODE) {
+      navigation.goBack();
+      return;
+    }
     if (task.inspectionRequired && !inspectionDone) {
       navigation.navigate('Inspection' as never, { bypassGate: true, taskId } as never);
       return;
