@@ -52,6 +52,7 @@ const demoSessions = [
 const createSession = (userA:string,userB:string) => {
   //Checks the demo database to ensure that a message session does not already exist that contains the 2 contacts before creating a new one
   let session;
+ 
   if(demoSessions.some(p => [p.user_one_id,p.user_two_id].includes(userA) && [p.user_one_id,p.user_two_id].includes(userB)) === false){
     session = InitID.getId();
     demoSessions.push({sessionid:session,user_one_id:userA,user_two_id:userB}) // create new session in demo database
@@ -80,8 +81,8 @@ export const Chat:FC = (props) =>{
     let contactuser = getUser(contactId);
     let CONTACTNAME = `${contactuser?.firstName} ${contactuser?.lastName}`
      
-    //Demo Messages database 
-     const previousDemoMessages =  useRef<TypeMessage[]> ([
+    //Demo demoMessages database 
+     const demoMessages =  useRef<TypeMessage[]> ([
 
         {sessionId:sessionId, id:InitID.getId(),message:"Hello",senderId:userInfo.userid, utcTimeStamp:"2026-03-23T23:28:27.788Z"}, 
         {sessionId:sessionId,id:InitID.getId(),message:"Hello",senderId:contactId, utcTimeStamp:"2026-03-23T23:28:27.788Z"}, 
@@ -114,11 +115,11 @@ export const Chat:FC = (props) =>{
     ])
    
     const {reverseStack} = useContext(AppContext);
-    const [messages,setMessage] = useState(messageSlice(previousDemoMessages.current,INTIALLOAD));
+    const [messages,setMessage] = useState(messageSlice(demoMessages.current,INTIALLOAD));
     const lastSync = useRef(TimeFormater.getTimeStamp("UTC-DATE"));
-    const messageIds = useRef(new Set(messageSlice(previousDemoMessages.current,INTIALLOAD).map(item => item.id)));
-    const fromSet = useRef((previousDemoMessages.current.length >= INTIALLOAD) ? previousDemoMessages.current.length - INTIALLOAD - MAXPERLOAD : 0);
-    const toSet = useRef(previousDemoMessages.current.length);
+    const messageIds = useRef(new Set(messageSlice(demoMessages.current,INTIALLOAD).map(item => item.id)));
+    const fromSet = useRef((demoMessages.current.length >= INTIALLOAD) ? demoMessages.current.length - INTIALLOAD - MAXPERLOAD : 0);
+    const toSet = useRef(demoMessages.current.length);
     const [loading,setLoading] = useState(false);
     const loadingPreviousMessages = useRef(false);
     const lastScrollY = useRef(0);
@@ -148,7 +149,7 @@ export const Chat:FC = (props) =>{
                     },CheckMsg)
                     return(tm)
                 }
-               const tm = syncMessages(previousDemoMessages.current);
+               const tm = syncMessages(demoMessages.current);
         return () => {
            
             clearInterval(tm);
@@ -238,7 +239,7 @@ export const Chat:FC = (props) =>{
             loadingPreviousMessages.current = true;
             setLoading(true);
             try{
-                await previousMessages(previousDemoMessages.current,1000);
+                await previousMessages(demoMessages.current,1000);
             }
             finally{
                 setLoading(false);
@@ -327,9 +328,9 @@ export const Chat:FC = (props) =>{
         {loading && <View style={Styles.Chat.loadingContainer}>
                 <Image source={Assets.logos.loading} style={Styles.Chat.loading}/>
             </View>}
-        <SearchBar placeHolder="Message..." buttonText="Send" multiline onClick={(msg:string)=>{(msg) && SendMessage(msg)}} resetOnSubmit={true}/>
+        <SearchBar placeHolder="Message..." buttonText="Send" multiline onClick={(msg:string)=>{(msg) && SendMessage(msg)}} resetOnSubmit={true} keyboardAware={true}/>
         </>
-        } onRefresh={() => {if(reverseStack === false) {previousMessages(previousDemoMessages.current,2000)}}} onScroll={(event:any,touch?:number,movement?:number,metrics?:ScrollMetrics) => {scroll(event,touch,movement,metrics)}} onMovement={(move:number,metrics?:ScrollMetrics) => {movement(move,metrics)}} onTouchEnd={() => {clearHoldTimer()}}>
+        } onRefresh={() => {if(reverseStack === false) {previousMessages(demoMessages.current,2000)}}} onScroll={(event:any,touch?:number,movement?:number,metrics?:ScrollMetrics) => {scroll(event,touch,movement,metrics)}} onMovement={(move:number,metrics?:ScrollMetrics) => {movement(move,metrics)}} onTouchEnd={() => {clearHoldTimer()}}>
         
             <View style={Styles.Chat.container}>
               

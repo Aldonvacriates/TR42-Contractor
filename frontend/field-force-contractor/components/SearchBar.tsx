@@ -1,7 +1,7 @@
-import {View,TextInput,Pressable,Text,Image} from 'react-native';
-import {Styles} from '@/constants/Styles';
-import {FC, useState} from "react";
-import { Assets } from "@/constants/Assets";
+import { Styles } from '@/constants/Styles';
+import { AppContext } from '@/contexts/AppContext';
+import { FC, useContext, useEffect, useState } from "react";
+import { Keyboard, Pressable, Text, TextInput, View } from 'react-native';
 
 
 type props = {
@@ -11,14 +11,37 @@ type props = {
     multiline?: boolean
     onClick:Function
     resetOnSubmit?:Boolean
+    keyboardAware?:Boolean
 }
+
 export const SearchBar:FC<props> = (props) => {
  const searchPlaceHolder = props.placeHolder || "Search...";
  const buttonText = props.buttonText || "Submit";
  const[message,setMessage] = useState<string>("");
  const [inputHeight,setInputHeight] = useState<number>(37);
+ const [floatHeight,setFloatHeight] = useState<number>(0);
+ const {menuHeight} = useContext(AppContext);
  const maxInputHeight = 110;
+
+ useEffect(() => {
+  let show:any;
+  let hide:any;
+  if(props.keyboardAware && menuHeight > 0){
+
+   show = Keyboard.addListener("keyboardDidShow",(event) => {setFloatHeight(((event.endCoordinates.height - menuHeight) > 0) ? event.endCoordinates.height - menuHeight : 0)})
+   hide =  Keyboard.addListener("keyboardDidHide",() => {setFloatHeight(0)})
+  }
+
+  return() => {
+
+    show?.remove();
+    hide?.remove()
+  
+  }
+},[menuHeight])
+
     return(<>
+     
     <View style={Styles.SearchBar.Bar}>
         <TextInput
           value={message}
@@ -54,9 +77,9 @@ export const SearchBar:FC<props> = (props) => {
                   }
               }
          </Pressable>
-         
+        
     </View>
-    
+    <View style={[Styles.Chat.floatBox,{height:floatHeight}]}/>
     </>
 
     )
