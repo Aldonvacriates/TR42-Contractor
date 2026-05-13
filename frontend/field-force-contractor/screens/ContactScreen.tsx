@@ -2,6 +2,7 @@ import { RootStackParamList } from "@/App"
 import { ContactCard } from "@/components/ContactCard"
 import { MainFrame } from "@/components/MainFrame"
 import { SearchBar } from "@/components/SearchBar"
+import { SHOWCASE_MODE } from "@/constants/showcase"
 import { AppContext, demoUsers, userTable } from "@/contexts/AppContext"
 import { api } from "@/utils/api"
 import { RouteProp, useNavigation, useRoute } from "@react-navigation/native"
@@ -32,14 +33,20 @@ const toUserRow = (c: BackendContact): userTable => ({
 export const Contacts:FC = (props) => {
     const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>()
     const {client} = useContext(AppContext)
-    const [remoteContacts, setRemoteContacts] = useState<userTable[] | null>(null)
+    // Start empty (not with demoUsers) so the screen never flashes demo
+    // contacts before the real backend list arrives. Jonathan caught this
+    // during testing — the previous `useState<...>(null)` fell back to
+    // demoUsers on first render which is visible as a brief glitch.
+    const [remoteContacts, setRemoteContacts] = useState<userTable[]>([])
+    const [loadFailed, setLoadFailed] = useState(false)
     const [nameSearch, setNameSearch] = useState("")
     const route = useRoute<RouteProp<RootStackParamList,'Contacts'>>()
     const sort = route.params?.sort
 
-    // Pull the real contact list from the backend. Falls back to demoUsers
-    // if the request fails so the screen is still usable offline / when the
-    // backend is unreachable.
+    // Pull the real contact list from the backend. Only fall back to
+    // demoUsers when (a) the fetch genuinely failed AND (b) we're in
+    // SHOWCASE_MODE, so demo builds stay functional offline while
+    // production never shows fake demo data.
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -48,17 +55,24 @@ export const Contacts:FC = (props) => {
                 if (cancelled) return
                 const rows = (res?.contacts ?? []).map(toUserRow)
                 setRemoteContacts(rows)
+                setLoadFailed(false)
             } catch {
-                if (!cancelled) setRemoteContacts(null)
+                if (!cancelled) setLoadFailed(true)
             }
         })()
         return () => { cancelled = true }
     }, [])
 
-    // Prefer the real backend list when we have it. Append the current
-    // client object so the sort=true filter still works the way it did on
-    // the demo data.
-    const base: userTable[] = remoteContacts ?? demoUsers
+    // Real backend list wins. If the fetch failed AND we're in showcase
+    // mode, fall back to demoUsers so the demo doesn't break offline.
+    // Production with a backend failure shows an empty list rather than
+    // fake data.
+    const base: userTable[] =
+        remoteContacts.length > 0
+            ? remoteContacts
+            : (loadFailed && SHOWCASE_MODE)
+                ? demoUsers
+                : []
     const contacts: userTable[] = (client) ? [...base, client] : base
 
     const Search:FC = () => (

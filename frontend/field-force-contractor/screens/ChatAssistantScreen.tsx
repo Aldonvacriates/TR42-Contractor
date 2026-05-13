@@ -9,9 +9,7 @@ import { FC, useEffect, useRef, useState } from 'react'
 import {
     Alert,
     Animated,
-    KeyboardAvoidingView,
     Modal,
-    Platform,
     ScrollView,
     Share,
     StyleSheet,
@@ -464,19 +462,24 @@ export const ChatAssistantScreen: FC = () => {
         }
     }
 
+    // SearchBar handles its own keyboard-aware float via the floatBox spacer
+    // (see SearchBar.tsx + Styles.Chat.floatBox). We pass keyboardAware so
+    // the spacer fires, and we render the SearchBar directly into the
+    // MainFrame footer slot instead of wrapping it in a KeyboardAvoidingView,
+    // which used to push the bottom menu up alongside the SearchBar. Jonathan
+    // flagged this during testing — the previous wrapping caused the menu
+    // and spacer to float when the keyboard appeared.
     const Footer: FC = () => (
         <SearchBar
             placeHolder="Ask the assistant..."
             buttonText="Send"
             onClick={(msg: string) => { if (msg) send(msg) }}
+            keyboardAware={true}
         />
     )
 
     return (
-        <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        >
+        <>
             <MainFrame
                 headerMenu={['Menu2', ['Field Assistant']]}
                 injectFooter={<Footer />}
@@ -711,7 +714,7 @@ export const ChatAssistantScreen: FC = () => {
                     </View>
                 </Modal>
             </MainFrame>
-        </KeyboardAvoidingView>
+        </>
     )
 }
 
